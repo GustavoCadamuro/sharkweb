@@ -15,6 +15,12 @@ head = head.replace('</head>', '<link rel="stylesheet" href="m.css"></head>', 1)
 head = head.replace('mirror://', '/m/')
 body_js = '<script src="lib/jszip.min.js"></script><script src="m-core.js"></script><script src="m-ui.js"></script><script src="boot.js"></script>'
 js = js.replace('neste computador','neste aparelho')
+def R(a, b):
+    global js
+    assert a in js, a[:60]
+    js = js.replace(a, b)
+# clonar: botão Cancelar e ignorar resultado se cancelado
+R("`<p class=mut><i class=sp2></i>Copiando ${esc(h)}...</p>`,[]);api.mirror({id,url:u}).then(r=>{b.remove();if(!r.ok)", "`<p class=mut><i class=sp2></i>Copiando ${esc(h)}... pode levar até 1 minuto.</p>`,[['Cancelar',()=>{window.__c=id}]]);api.mirror({id,url:u}).then(r=>{b.remove();if(window.__c==id)return;if(!r.ok)")
 out = head + body_js + tail
 os.makedirs(W + '/__sl', exist_ok=True)
 open(W + '/index.html', 'w', encoding='utf8').write(out)

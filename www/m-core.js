@@ -4,7 +4,8 @@
   'use strict';
   const te = new TextEncoder(), td = new TextDecoder();
   const NATIVE = () => { try { return window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform() } catch (e) { return false } };
-  const plug = n => { try { return window.Capacitor && Capacitor.registerPlugin ? Capacitor.registerPlugin(n) : null } catch (e) { return null } };
+  // o "ponte" do Capacitor sem empacotador só tem nativePromise (não existe registerPlugin)
+  const plug = n => { try { const C = window.Capacitor; if (!C || !C.nativePromise) return null; return new Proxy({}, { get: (_, m) => m === 'then' ? undefined : (o => C.nativePromise(n, String(m), o || {})) }) } catch (e) { return null } };
   const SN = () => NATIVE() ? (SN.p || (SN.p = plug('SharkNative'))) : null;
 
   /* ---------- utilidades binárias ---------- */
@@ -113,6 +114,35 @@
       for (const f of same) { const x = await n.cloneRead({ ticket: r.ticket, i: f.i }); res.push({ u: f.u, t: f.t, main: f.main, b: b64u8(x.b64) }) }
       return { url: r.url, res, thumb: r.thumb };
     } finally { try { await n.cloneDone({ ticket: r.ticket }) } catch { } }
+  }
+  async function cloneRaw(n, url, onp) {
+    const UA = 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36';
+    const get = async u => { const r = await n.http({ url: u, method: 'GET', headers: { 'User-Agent': UA, 'Accept': '*/*', 'Accept-Language': 'pt-BR,pt;q=0.9' } }); const h = r.headers || {}; return { u: r.url, st: r.status, ct: h['Content-Type'] || h['content-type'] || '', b: b64u8(r.b64 || '') } };
+    const main = await get(url); if (main.st >= 400) throw new Error('O site respondeu com erro ' + main.st + '.');
+    const base = new URL(main.u), seen = new Set([main.u]), res = [{ u: main.u, t: 'Document', main: true, b: main.b }], q = [];
+    const refs = (txt, from, isCss, isJs) => {
+      const out = new Set(); let m;
+      if (!isCss && !isJs) { const re = /(?:src|href|poster|data-src|data-bg)\s*=\s*["']([^"'#]+)["']/gi; while ((m = re.exec(txt))) out.add(m[1]); const ss = /srcset\s*=\s*["']([^"']+)["']/gi; while ((m = ss.exec(txt))) m[1].split(',').forEach(x => out.add(x.trim().split(/\s+/)[0])) }
+      const cu = /url\(\s*["']?([^"')]+)["']?\s*\)/gi; while ((m = cu.exec(txt))) out.add(m[1]);
+      if (isCss) { const im = /@import\s+["']([^"']+)["']/gi; while ((m = im.exec(txt))) out.add(m[1]) }
+      if (isJs) { const a = /["'`](\/[^"'`\s]+\.(?:js|mjs|css|png|jpe?g|webp|svg|gif|avif|woff2?|ttf|mp4|ico))["'`]/gi; while ((m = a.exec(txt))) out.add(m[1]); const r = /["'`]\.\/([^"'`\s]+\.(?:js|mjs|css))["'`]/gi; while ((m = r.exec(txt))) out.add('./' + m[1]) }
+      const ok = []; out.forEach(x => { try { if (/^(data:|mailto:|tel:|javascript:|blob:)/i.test(x)) return; const u = new URL(x, from); if (u.origin == base.origin) { u.hash = ''; ok.push(u.href) } } catch (e) { } }); return ok;
+    };
+    const txt = b => td.decode(b);
+    refs(txt(main.b), main.u, false, false).forEach(u => { if (!seen.has(u)) { seen.add(u); q.push(u) } });
+    let n2 = 0;
+    while (q.length && n2 < 500) {
+      const batch = q.splice(0, 6); n2 += batch.length; if (onp) onp(n2);
+      await Promise.all(batch.map(async u => {
+        try {
+          const f = await get(u); if (f.st >= 300) return; const ct = f.ct.toLowerCase();
+          res.push({ u: f.u, t: '', b: f.b });
+          const isCss = /css/.test(ct) || /\.css(\?|$)/i.test(u), isJs = /javascript/.test(ct) || /\.m?js(\?|$)/i.test(u);
+          if ((isCss || isJs) && f.b.length < 3e6) refs(txt(f.b), f.u, isCss, isJs).forEach(x => { if (!seen.has(x)) { seen.add(x); q.push(x) } });
+        } catch (e) { }
+      }));
+    }
+    return { url: main.u, res, thumb: '' };
   }
   async function cloneWeb(url) { // só para testes no computador / quando o plugin não existe
     const base = new URL(url), seen = new Map(), res = [];
@@ -239,7 +269,11 @@ Regras:
     },
     mirror: async ({ id, url }) => {
       try {
-        const n = SN(); const c = n ? await cloneNative(n, id, url) : await cloneWeb(url);
+        const n = SN(); let c;
+        if (n) {
+          try { c = await Promise.race([cloneNative(n, id, url), new Promise((_, rj) => setTimeout(() => rj(new Error('tempo esgotado')), 90000))]) } catch (e1) { try { c = await cloneRaw(n, url) } catch (e2) { throw new Error('Não consegui copiar essa página (' + (e2.message || e1.message) + ').') } }
+          if (!c.res.some(f => f.main)) { try { c = await cloneRaw(n, url) } catch (e2) { throw new Error('Não consegui copiar essa página (' + (e2.message || '') + ').') } }
+        } else c = await cloneWeb(url);
         const { doc, items } = procClone(id, c.res, c.url);
         if (!doc) return { ok: false, error: 'Não consegui capturar a página. Confira o endereço.' };
         if (c.thumb) items.push(['/_sl_thumb.jpg', b64u8(c.thumb)]);

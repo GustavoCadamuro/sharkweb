@@ -25,6 +25,31 @@
     window.side.__m = 1;
     // o app chama "side()" por nome global; reatribuir a função global basta
   }
+  document.addEventListener('click', e => { const b = e.target.closest && e.target.closest('#sp .tabs button'); if (b) { const sp = $('#sp'); if (sp) sp.dataset.s = 'open' } }, true);
+  // botão ✕ em todas as janelas
+  function closers() {
+    document.querySelectorAll('.ov > .md').forEach(m => {
+      if (m.querySelector(':scope > .mx')) return;
+      const b = document.createElement('button'); b.className = 'mx'; b.textContent = '✕'; b.setAttribute('aria-label', 'Fechar');
+      b.onclick = e => { e.stopPropagation(); const o = m.parentNode; o && o.remove() }; m.prepend(b);
+    });
+  }
+  // barra do editor em duas linhas (principal + ferramentas)
+  function topbar() {
+    const t = document.querySelector('.main .top, #main .top'); if (!t || t.classList.contains('mtop')) return;
+    t.classList.add('mtop');
+    const kids = [...t.children], r1 = document.createElement('div'), tools = document.createElement('div'); r1.className = 'trow1'; tools.className = 'tools';
+    const back = kids.find(k => k.tagName == 'BUTTON'); if (back) { back.dataset.t = back.textContent; back.textContent = '←'; back.classList.add('sq'); back.setAttribute('aria-label', 'Voltar') }
+    kids.forEach(k => {
+      if (k.classList.contains('sp') || k.tagName == 'SPAN' && k.id != 'svs') { k.remove(); return }
+      if (k === back || k.classList.contains('nm') || k.id == 'pbtn' || /^(↶|↷)/.test(k.textContent.trim())) { if (/^↶/.test(k.textContent.trim())) { k.textContent = '↶'; k.classList.add('sq') } if (/^↷/.test(k.textContent.trim())) k.classList.add('sq'); r1.append(k) }
+      else if (k.id == 'svs') r1.append(k); else tools.append(k);
+    });
+    const pb = r1.querySelector('#pbtn'); if (pb) r1.append(pb);
+    t.append(r1, tools);
+    // o seletor de aparelho (Celular/Tablet/PC) não serve no celular
+    tools.querySelectorAll('.seg').forEach(s => { if (s.querySelector('[data-k]') && !s.textContent.includes('Editar')) s.remove() });
+  }
   // botão "+" para as peças
   function fab() {
     const ed = document.querySelector('.ed .pal');
@@ -33,7 +58,7 @@
     if (!$('#palfab')) { const b = document.createElement('button'); b.id = 'palfab'; b.textContent = '+'; b.setAttribute('aria-label', 'Adicionar elemento'); b.onclick = () => document.body.classList.toggle('mob-pal'); document.body.append(b) }
     if (!ed.__m) { ed.__m = 1; ed.addEventListener('click', e => { if (e.target.closest('.tile')) setTimeout(() => document.body.classList.remove('mob-pal'), 120) }) }
   }
-  new MutationObserver(() => { nav(); hook(); hookF(); fab(); const sp = $('#sp'); if (sp && !sp.querySelector('.sphd')) sheet() }).observe(document.body, { childList: true, subtree: true });
+  new MutationObserver(() => { nav(); hook(); hookF(); fab(); closers(); topbar(); const sp = $('#sp'); if (sp && !sp.querySelector('.sphd')) sheet() }).observe(document.body, { childList: true, subtree: true });
   function hookF() {
     if (typeof window.fnSelect != 'function' || window.fnSelect.__m) return;
     const o = window.fnSelect;
@@ -71,10 +96,8 @@
   window.SL_back = back;
   try {
     if (window.Capacitor && Capacitor.isNativePlatform()) {
-      const App = Capacitor.registerPlugin('App');
-      App.addListener('backButton', () => { if (!back()) App.minimizeApp && App.minimizeApp() });
-      const Br = Capacitor.registerPlugin('Browser');
-      window.open = (u) => { try { Br.open({ url: String(u) }) } catch (e) { } return null };
+      Capacitor.addListener('App', 'backButton', () => { if (!back()) Capacitor.nativePromise('App', 'minimizeApp', {}).catch(() => { }) });
+      window.open = (u) => { try { Capacitor.nativePromise('Browser', 'open', { url: String(u) }).catch(() => { }) } catch (e) { } return null };
     }
   } catch (e) { }
 })();
