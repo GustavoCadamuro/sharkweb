@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Shark Lab</string>
+    <string name="title_activity_main">Shark Lab</string>
+    <string name="package_name">com.sharklab.app</string>
+    <string name="custom_url_scheme">com.sharklab.app</string>
+</resources>

@@ -1,0 +1,47 @@
+name: Montar APK
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+      - run: npx cap sync android
+      - name: Compilar
+        id: build
+        working-directory: android
+        run: |
+          chmod +x gradlew
+          set +e
+          ./gradlew assembleRelease --no-daemon --stacktrace > ../build.log 2>&1
+          echo "code=$?" >> $GITHUB_OUTPUT
+          tail -150 ../build.log
+      - name: Guardar log da compilação
+        if: always()
+        run: |
+          git config user.name "Shark Lab Bot"; git config user.email "bot@users.noreply.github.com"
+          mkdir -p /tmp/bl && cp build.log /tmp/bl/ 2>/dev/null || true
+          git checkout --orphan buildlog && git rm -rf . >/dev/null 2>&1 || true
+          cp /tmp/bl/build.log ./build.log 2>/dev/null || echo "sem log" > build.log
+          echo "${{ steps.build.outputs.code }}" > status.txt
+          git add build.log status.txt && git commit -qm "log ${{ github.sha }}" && git push -f origin buildlog
+      - name: Publicar o APK
+        if: steps.build.outputs.code == '0'
+        run: |
+          cp android/app/build/outputs/apk/release/app-release.apk SharkLab.apk
+          gh release delete apk-atual --yes --cleanup-tag || true
+          gh release create apk-atual SharkLab.apk --title "Shark Lab (Android)" --notes "APK mais recente. Baixe o arquivo SharkLab.apk e instale no celular."
+        env:
+          GH_TOKEN: ${{ github.token }}
+      - name: Falhar se a compilação falhou
+        if: steps.build.outputs.code != '0'
+        run: exit 1

@@ -1,0 +1,1 @@
+{"name":"sharklab-celular","version":"1.0.0","private":true,"description":"Shark Lab para Android","dependencies":{"@capacitor/android":"^8.6.2","@capacitor/cli":"^8.6.2","@capacitor/core":"^8.6.2","@capacitor/filesystem":"^8.1.5","@capacitor/preferences":"^8.0.1","@capacitor/share":"^8.0.3","@capacitor/splash-screen":"^8.0.2","jszip":"^3.10.2"}}
