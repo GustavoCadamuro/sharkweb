@@ -40,7 +40,7 @@
   const rt = (() => { const m = {}; return n => m[n] || (m[n] = fetch('/__sl/' + n).then(r => r.text())) })();
   const opsOf = async id => { const u = await fGet(id, '/_sl_ops.json'); return u ? td.decode(u) : '[]' };
   async function injectInline(html, id, ops) {
-    const x = `<script>window.__SL_OPS=${(ops || await opsOf(id)).replace(/</g, '\\u003c')}<\/script><script>${await rt('patch.js')}<\/script>`;
+    const x = `<script>window.__SL_OPS=${asciiJs((ops || await opsOf(id)).replace(/</g, '\\u003c'))}<\/script><script>${await rt('patch.js')}<\/script>`;
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + x) : x + html;
   }
   async function siteFiles(id, inject, ops) {
@@ -48,7 +48,7 @@
     for (const p of (await fKeys(id)).sort()) {
       if (p.startsWith('/_sl')) continue;
       let b = await fGet(id, p);
-      if (p == '/index.html') { let h = await injectInline(td.decode(b), id, ops ? JSON.stringify(ops) : null); if (inject) h = h.replace(/<\/head>/i, () => inject + '</head>'); b = te.encode(h) }
+      if (p == '/index.html') { let h = await injectInline(td.decode(b), id, ops ? JSON.stringify(ops) : null); if (inject) h = h.replace(/<\/head>/i, () => inject + '</head>'); h = fixCharset(h); b = te.encode(h) }
       F[p] = b;
     }
     if (!F['/_redirects']) F['/_redirects'] = te.encode('/*  /index.html  200\n');
@@ -349,9 +349,15 @@ Regras:
         } else c = await cloneWeb(url);
         const { doc, items } = procClone(id, c.res, c.url);
         if (!doc) return { ok: false, error: 'Não consegui capturar a página. Confira o endereço.' };
+        let more = null;
+        try {
+          const FF = {}; for (const [p, b] of items) FF[p] = b;
+          more = await makeCloneFix({ get: async u => { try { const r = await Promise.race([nfetch(u, { headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36', 'Referer': new URL(c.url).origin + '/' } }), new Promise((_, rj) => setTimeout(() => rj(new Error('t')), 25000))]); return { status: r.status, u8: new Uint8Array(await r.arrayBuffer()), type: r.headers.get('content-type') } } catch { return null } } }).complete(FF, c.url, {});
+          const have = new Set(items.map(x => x[0])); for (const p in FF) { if (have.has(p)) { const i = items.findIndex(x => x[0] == p); items[i][1] = FF[p] } else items.push([p, FF[p]]) }
+        } catch (e) { more = { error: String(e && e.message || e) } }
         if (c.thumb) items.push(['/_sl_thumb.jpg', b64u8(c.thumb)]);
         await fMany(id, items);
-        return { ok: true, count: items.length - (c.thumb ? 1 : 0), thumb: c.thumb ? 1 : 0 };
+        return { ok: true, count: items.length - (c.thumb ? 1 : 0), thumb: c.thumb ? 1 : 0, more };
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
     ckview: async ({ url, title }) => {

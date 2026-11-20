@@ -1,4 +1,4 @@
-const{app,BrowserWindow,ipcMain,shell,protocol,Menu,dialog,nativeImage,session}=require('electron'),crypto=require('crypto'),fs=require('fs'),path=require('path');
+const{app,BrowserWindow,ipcMain,shell,protocol,Menu,dialog,nativeImage,session,net}=require('electron'),crypto=require('crypto'),fs=require('fs'),path=require('path');
 app.commandLine.appendSwitch('disable-features','Translate,MediaRouter,OptimizationHints,AutofillServerCommunication,CalculateNativeWinOcclusion');app.commandLine.appendSwitch('disable-background-networking');
 const LOCK=app.requestSingleInstanceLock();if(!LOCK)app.quit();
 protocol.registerSchemesAsPrivileged([{scheme:'mirror',privileges:{standard:true,secure:true,supportFetchAPI:true,corsEnabled:true,stream:true}}]);
@@ -8,12 +8,12 @@ const walk=(d,b='')=>fs.existsSync(d)?fs.readdirSync(d,{withFileTypes:true}).fla
 const wr=p=>{const f=PF(),t=f+'.tmp';fs.mkdirSync(path.dirname(f),{recursive:true});fs.writeFileSync(t,JSON.stringify(p));fs.renameSync(t,f)};
 const rd=f=>fs.readFileSync(path.join(__dirname,f),'utf8');
 const opsOf=id=>{try{return fs.readFileSync(path.join(MD(),id,'_sl_ops.json'),'utf8')}catch{return'[]'}};
-function injectHead(html,id,edit,inline,ov){const x=(inline?'':'<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>')+`<script>${edit?'window.__SL_EDIT=1;':''}window.__SL_OPS=${(ov||opsOf(id)).replace(/</g,'\\u003c')}<\/script>`+(inline?`<script>${rd('patch.js')}<\/script>`:'<script src="/__sl/patch.js"><\/script>')+(edit?'<script src="/__sl/agent.js"><\/script>':'');return /<head[^>]*>/i.test(html)?html.replace(/<head[^>]*>/i,m=>m+x):x+html}
+function injectHead(html,id,edit,inline,ov){const x=(inline?'':'<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>')+`<script>${edit?'window.__SL_EDIT=1;':''}window.__SL_OPS=${asciiJs((ov||opsOf(id)).replace(/</g,'\\u003c'))}<\/script>`+(inline?`<script>${rd('patch.js')}<\/script>`:'<script src="/__sl/patch.js"><\/script>')+(edit?'<script src="/__sl/agent.js"><\/script>':'');return /<head[^>]*>/i.test(html)?html.replace(/<head[^>]*>/i,m=>m+x):x+html}
 const mh=req=>{try{const u=new URL(req.url),root=path.join(MD(),u.hostname);let p=decodeURIComponent(u.pathname);if(p.startsWith('/__sl/')){const n=p.slice(6);if(n=='patch.js'||n=='agent.js')return new Response(rd(n),{headers:{'content-type':'text/javascript','cache-control':'no-store'}});return new Response('',{status:404})}
 if(p.endsWith('/'))p+='index.html';let f=path.join(root,p);if(!f.startsWith(root))return new Response('',{status:403});if(!fs.existsSync(f)||fs.statSync(f).isDirectory())f=path.join(root,'index.html');
 let body=fs.readFileSync(f);if(f==path.join(root,'index.html'))body=Buffer.from(injectHead(body.toString('utf8'),u.hostname,u.searchParams.has('edit'),false,u.searchParams.has('orig')?'[]':null));
 return new Response(body,{headers:{'content-type':MT[path.extname(f).toLowerCase()]||'application/octet-stream','cache-control':'no-store'}})}catch{return new Response('',{status:404})}};
-function siteFiles(id,inject,ops){const F={},dir=path.join(MD(),id);for(const p of walk(dir)){if(p.startsWith('/_sl'))continue;let b=fs.readFileSync(dir+p);if(p=='/index.html'){let h=injectHead(b.toString('utf8'),id,false,true,ops?JSON.stringify(ops):null);if(inject)h=h.replace(/<\/head>/i,()=>inject+'</head>');b=Buffer.from(h)}F[p]=b}if(!F['/_redirects'])F['/_redirects']=Buffer.from('/*  /index.html  200\n');return F}
+function siteFiles(id,inject,ops){const F={},dir=path.join(MD(),id);for(const p of walk(dir)){if(p.startsWith('/_sl'))continue;let b=fs.readFileSync(dir+p);if(p=='/index.html'){let h=injectHead(b.toString('utf8'),id,false,true,ops?JSON.stringify(ops):null);if(inject)h=h.replace(/<\/head>/i,()=>inject+'</head>');h=fixCharset(h);b=Buffer.from(h)}F[p]=b}if(!F['/_redirects'])F['/_redirects']=Buffer.from('/*  /index.html  200\n');return F}
 app.whenReady().then(()=>{if(!LOCK)return;Menu.setApplicationMenu(null);protocol.handle('mirror',mh);const w=new BrowserWindow({width:1440,height:900,backgroundColor:'#0b0c11',autoHideMenuBar:true,title:'Shark Lab',icon:__dirname+'/icon.png',webPreferences:{preload:__dirname+'/preload.js',spellcheck:false}});
 w.webContents.on('before-input-event',(e,i)=>{if(i.type=='keyDown'&&i.key=='F11'){e.preventDefault();w.setFullScreen(!w.isFullScreen())}});w.webContents.on('will-prevent-unload',e=>{const c=dialog.showMessageBoxSync(w,{type:'warning',buttons:['Sair mesmo assim','Voltar ao editor'],defaultId:1,cancelId:1,title:'Shark Lab',message:'Há alterações que ainda não foram publicadas.',detail:'Elas ficam salvas no editor, mas o site no ar continua como estava.'});if(c==0)e.preventDefault()});w.loadFile(__dirname+'/index.html');app.on('second-instance',()=>{if(w.isMinimized())w.restore();w.focus()});w.webContents.setWindowOpenHandler(({url})=>{shell.openExternal(url);return{action:'deny'}})});
 app.on('window-all-closed',()=>app.quit());
@@ -42,12 +42,16 @@ d.on('message',(e,m,p)=>{if(m=='Network.requestWillBeSent'){pend++;last=Date.now
 await Promise.race([w.loadURL(url).catch(e=>{if(e.code!='ERR_ABORTED'&&!/ERR_ABORTED/.test(String(e)))throw e}),sl(25000).then(()=>{throw new Error('O site demorou demais para responder.')})]);
 await idle(400,5000);
 let th='';try{th=(await w.webContents.capturePage()).resize({width:640}).toJPEG(70).toString('base64')}catch{}
-await w.webContents.executeJavaScript('(async()=>{const h=document.documentElement.scrollHeight;for(let y=0;y<h;y+=900){scrollTo(0,y);await new Promise(r=>setTimeout(r,70))}scrollTo(0,0)})()');await idle(350,4000);
-const res=(await Promise.all(P)).filter(Boolean),fin=new URL(w.webContents.getURL()),origin=fin.origin,dir=path.join(MD(),id);fs.rmSync(dir,{recursive:true,force:true});let n=0,doc=false;
+await w.webContents.executeJavaScript('(async()=>{document.querySelectorAll("img[loading=lazy],iframe[loading=lazy]").forEach(i=>{i.loading="eager"});document.querySelectorAll("*").forEach(e=>{if(e.scrollWidth>e.clientWidth+40&&/(auto|scroll)/.test(getComputedStyle(e).overflowX)){try{e.scrollTo(e.scrollWidth,0);e.scrollTo(0,0)}catch{}}});const h=document.documentElement.scrollHeight;for(let y=0;y<h;y+=900){scrollTo(0,y);await new Promise(r=>setTimeout(r,70))}scrollTo(0,0)})()');await idle(350,4000);
+let extra=[];try{extra=await w.webContents.executeJavaScript(`(()=>{const S=new Set(),add=u=>{if(u)try{S.add(new URL(u,document.baseURI).href)}catch{}};document.querySelectorAll('img,source,video,audio,image,input[type=image]').forEach(e=>{for(const a of e.attributes){if(/^(src|poster|data-)/.test(a.name)&&!/srcset/.test(a.name))add(a.value);if(/srcset/.test(a.name))a.value.split(',').forEach(x=>add(x.trim().split(/\\s+/)[0]))}});document.querySelectorAll('link[rel*=icon],link[rel=preload][as=image],meta[property="og:image"],meta[name="twitter:image"]').forEach(e=>add(e.href||e.content));document.querySelectorAll('*').forEach(e=>{for(const ps of [null,'::before','::after']){const v=getComputedStyle(e,ps).backgroundImage;if(v&&v.indexOf('url(')>=0)(v.match(/url\\(["']?[^"')]+/g)||[]).forEach(x=>add(x.replace(/^url\\(["']?/,'')))}});return[...S]})()`)}catch{}
+const res=(await Promise.all(P)).filter(Boolean),fin=new URL(w.webContents.getURL()),origin=fin.origin,dir=path.join(MD(),id);fs.rmSync(dir,{recursive:true,force:true});let n=0,doc=false;const OUT={};
 for(const f of res){let u;try{u=new URL(f.u)}catch{continue}if(u.origin!=origin)continue;let p=decodeURIComponent(u.pathname);if(f.t=='Document'){if(doc||(p.includes('.')&&!p.endsWith('.html')))continue;doc=true;p='/index.html'}else if(p.endsWith('/'))continue;
 let b=Buffer.from(f.b.body,f.b.base64Encoded?'base64':'utf8');if(p=='/index.html'){let h=b.toString('utf8').split(origin).join('');if(fin.pathname!='/'&&!fin.pathname.includes('.'))h=/<head[^>]*>/i.test(h)?h.replace(/<head[^>]*>/i,m=>m+`<script>history.replaceState(null,'','${fin.pathname}')<\/script>`):`<script>history.replaceState(null,'','${fin.pathname}')<\/script>`+h;b=Buffer.from(h)}
-const fp=path.join(dir,p);fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp,b);n++}
-if(!doc)return{ok:false,error:'Não consegui capturar a página. Confira o endereço.'};if(th)fs.writeFileSync(path.join(dir,'_sl_thumb.jpg'),Buffer.from(th,'base64'));return{ok:true,count:n,thumb:th?1:0}}catch(e){return{ok:false,error:String(e.message||e)}}finally{try{d.detach()}catch{}w.destroy()}});
+OUT[p]=b}
+if(!doc)return{ok:false,error:'Não consegui capturar a página. Confira o endereço.'};
+let cfr=null;try{const U8={};for(const p in OUT)U8[p]=new Uint8Array(OUT[p]);cfr=await makeCloneFix({get:async u=>{try{const r=await net.fetch(u,{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',Referer:origin+'/'},signal:AbortSignal.timeout(25000)});return{status:r.status,u8:new Uint8Array(await r.arrayBuffer()),type:r.headers.get('content-type')}}catch{return null}}}).complete(U8,fin.href,{extra});for(const p in U8)OUT[p]=Buffer.from(U8[p])}catch(e){cfr={error:String(e&&e.message||e)}}
+for(const p in OUT){const fp=path.join(dir,p);fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp,OUT[p]);n++}
+if(th)fs.writeFileSync(path.join(dir,'_sl_thumb.jpg'),Buffer.from(th,'base64'));return{ok:true,count:n,thumb:th?1:0,more:cfr}}catch(e){return{ok:false,error:String(e.message||e)}}finally{try{d.detach()}catch{}w.destroy()}});
 ipcMain.handle('mrep',(_,{id,a,b,apply})=>{try{const dir=path.join(MD(),id);let n=0,f=0;for(const p of walk(dir)){if(!TX.test(p)||p.startsWith('/_sl'))continue;const fp=dir+p,t=fs.readFileSync(fp,'utf8'),c=t.split(a).length-1;if(c){n+=c;f++;if(apply)fs.writeFileSync(fp,t.split(a).join(b))}}return{ok:true,n,f}}catch(e){return{ok:false,error:String(e.message)}}});
 ipcMain.handle('mput',(_,{id,name,data})=>{try{const dir=path.join(MD(),id,'uploads');fs.mkdirSync(dir,{recursive:true});const n=Date.now()+'-'+name.replace(/[^\w.-]/g,'_');fs.writeFileSync(path.join(dir,n),Buffer.from(data.split(',')[1],'base64'));return{ok:true,path:'/uploads/'+n}}catch(e){return{ok:false,error:String(e.message)}}});
 ipcMain.handle('fsize',(_,{id,files})=>{const r={},root=path.join(MD(),id);for(const f of files||[]){try{const rel=decodeURIComponent(String(f).split('?')[0].replace(/^https?:\/\/[^/]+/,'').replace(/^mirror:\/\/[^/]+/,'')),p=path.join(root,rel);if(p.startsWith(root)&&fs.existsSync(p))r[f]=fs.statSync(p).size}catch{}}return r});
@@ -172,6 +176,103 @@ for(const p in F)if(/(^|\/)index\.html$/.test(p))F[p]=Buffer.concat([Buffer.from
 const ks=Object.keys(F).sort();let cur='',n=0;for(const p of ks){const rel=p.replace(/^\/+/,'').split('/'),name=rel.pop(),sub=rel.join('/');if(sub!==cur){await c.ensureDir(base+(sub?'/'+sub:''));cur=sub}if(!st.done.has(p)){await c.uploadFrom(Readable.from([Buffer.from(F[p])]),name);st.done.add(p)}n++}
 await c.ensureDir(mdir);await c.uploadFrom(Readable.from([Buffer.from(JSON.stringify({token:tok,at:Date.now(),owner:owner&&owner.id||'',name:owner&&owner.name||''}))]),'_sl_pub.json');c.close();
 const live=domain?await liveCheck(domain,tok,liveGap):null;return{ok:true,n,live,speed:spr}}catch(e){const m=String(e&&e.message||e);if(ftpRetry(m))return{retry:1,err:e};return{ok:false,error:ftpErr(e)}}finally{c.close()}}
+
+
+// ===== Clonagem completa (v49) =====
+/* Shark Lab - completa a clonagem: baixa tudo o que a pagina usa e a captura nao pegou
+   (fotos de carrossel que so carregam depois, imagens que ficam dentro do JavaScript, fundos do CSS,
+   imagens hospedadas em outro endereco). Igual no computador e no celular.
+   E = { get(url) -> {status,u8,type}|null }  (sem limite de CORS)
+   F = { '/caminho': Uint8Array }  (arquivos ja capturados do mesmo endereço) */
+function makeCloneFix(E){
+  const te=new TextEncoder(),td=new TextDecoder();
+  const MEDIA='png|jpe?g|gif|webp|avif|svg|ico|bmp|mp4|webm|mov|m4v|woff2?|ttf|otf|eot|mp3|ogg|wav';
+  const TXT=/\.(html?|css|m?js|json|svg|webmanifest|xml)$/i;
+  const MIMEX={'image/jpeg':'jpg','image/png':'png','image/webp':'webp','image/gif':'gif','image/avif':'avif','image/svg+xml':'svg','image/x-icon':'ico','image/vnd.microsoft.icon':'ico','video/mp4':'mp4','video/webm':'webm','font/woff2':'woff2','font/woff':'woff','audio/mpeg':'mp3'};
+  const sha8=async s=>{const d=await crypto.subtle.digest('SHA-1',te.encode(s));return [...new Uint8Array(d)].slice(0,4).map(x=>x.toString(16).padStart(2,'0')).join('')};
+  const dec=s=>{try{return decodeURIComponent(s)}catch{return s}};
+  async function complete(F,origin,opt){
+    opt=opt||{};const rep={added:0,bytes:0,failed:[],ext:0};
+    const O=new URL(origin).origin,cap=opt.maxBytes||250*1048576;let total=0;
+    const textFiles=()=>Object.keys(F).filter(p=>TXT.test(p));
+    const texts={};for(const p of textFiles())texts[p]=td.decode(F[p]);
+    const cand=new Map(); /* url absoluta -> {kind:'same'|'ext'|'dyn'} */
+    const add=(u,base,force)=>{
+      u=String(u||'').trim().replace(/&amp;/g,'&').replace(/\\\//g,'/');
+      if(!u||/^(data:|blob:|javascript:|#|about:|mailto:|tel:)/i.test(u))return;
+      let a;try{a=new URL(u,base)}catch{return}if(!/^https?:$/.test(a.protocol))return;a.hash='';
+      const isDyn=/\/_next\/image$/i.test(a.pathname)&&a.search;
+      if(!isDyn&&!new RegExp('\\.('+MEDIA+')$','i').test(dec(a.pathname))&&!(force&&a.origin!=O))return;
+      if(/(^|\.)(facebook\.com|facebook\.net|google-analytics\.com|googletagmanager\.com|doubleclick\.net|clarity\.ms|hotjar\.com|tiktok\.com)$/i.test(a.hostname))return;
+      cand.set(a.href,a.origin==O?(isDyn?'dyn':'same'):'ext');
+    };
+    const base=O+'/';
+    const scan=()=>{
+      for(const p in texts){
+        const t=texts[p],pageUrl=O+p;
+        if(/\.html?$/i.test(p)){
+          const re=/\b(?:src|poster|data-[\w-]*(?:src|bg|background|image|poster)[\w-]*|href|content)\s*=\s*("([^"]*)"|'([^']*)')/gi;let m;
+          while((m=re.exec(t)))add(m[2]!==undefined?m[2]:m[3],pageUrl);
+          const rs=/\b(?:srcset|data-[\w-]*srcset)\s*=\s*("([^"]*)"|'([^']*)')/gi;
+          while((m=rs.exec(t)))for(const part of String(m[2]!==undefined?m[2]:m[3]).split(','))add(part.trim().split(/\s+/)[0],pageUrl);
+          const us=/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;while((m=us.exec(t)))add(m[2],pageUrl,true);
+          const tg=/<(?:img|source|video|audio|input|image)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;let mt;
+          while((mt=tg.exec(t))){const ar=/\b(?:src|poster|data-[\w-]+)\s*=\s*("([^"]*)"|'([^']*)')/gi;let ma;while((ma=ar.exec(mt[0])))add(ma[2]!==undefined?ma[2]:ma[3],pageUrl,true);
+            const sr=/\b(?:srcset|data-[\w-]*srcset)\s*=\s*("([^"]*)"|'([^']*)')/gi;while((ma=sr.exec(mt[0])))for(const part of String(ma[2]!==undefined?ma[2]:ma[3]).split(','))add(part.trim().split(/\s+/)[0],pageUrl,true)}
+        }else if(/\.css$/i.test(p)){
+          const us=/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;let m;while((m=us.exec(t)))add(m[2],pageUrl,true);
+        }
+        /* textos dentro de JS/JSON/HTML: enderecos completos e caminhos que comecam com / */
+        const tt=t.replace(/\\\//g,'/');
+        const ab=new RegExp('(?:https?:)?//[^\\s"\'`()<>\\\\,;]+?\\.(?:'+MEDIA+')(?:\\?[^\\s"\'`()<>\\\\,;]*)?(?=["\'`()<>\\\\,;\\s]|$)','gi');let m2;
+        while((m2=ab.exec(tt))){let u=m2[0];if(u.startsWith('//'))u='https:'+u;add(u,pageUrl)}
+        const rl=new RegExp('["\'`(=]((?:/(?!/)[^\\s"\'`()<>\\\\,;]*?)\\.(?:'+MEDIA+')(?:\\?[^\\s"\'`()<>\\\\,;]*)?)(?=["\'`)])','gi');
+        while((m2=rl.exec(tt)))add(m2[1],O+'/');
+        if(/\.(m?js|json|html?)$/i.test(p)){const di=/[\\"'`(]((?:\/_next\/image)\?[^\s"'`()<>\\]+)/g;while((m2=di.exec(tt)))add(m2[1],O+'/')}
+      }
+      for(const u of(opt.extra||[]))add(u,base);
+    };
+    scan();
+    const done=new Set(),fixes=[];/* [textoOriginal, caminhoLocal] */
+    for(let pass=0;pass<2;pass++){
+      const todo=[...cand.entries()].filter(([u])=>!done.has(u));if(!todo.length)break;
+      let i=0;
+      const work=async([u,kind])=>{
+        done.add(u);const a=new URL(u);let lp=null;
+        if(kind=='same'){lp=dec(a.pathname);if(F[lp])return}
+        else{
+          const nm=(dec(a.pathname).split('/').pop()||'arq').replace(/[^A-Za-z0-9._-]+/g,'-').slice(-60);lp='/_x/'+(kind=='dyn'?'d':'')+await sha8(u)+(kind=='dyn'?'':'-'+nm);
+        }
+        if(total>=cap){rep.failed.push(u);return}
+        let r=null;try{r=await E.get(u)}catch{}
+        if(!r||r.status<200||r.status>=300||!r.u8||!r.u8.length){rep.failed.push(u);return}
+        if(r.u8.length>(/\.(mp4|webm|mov|m4v)$/i.test(a.pathname)?60:25)*1048576){rep.failed.push(u);return}
+        if(kind!='same'){const t=String(r.type||'').split(';')[0].trim().toLowerCase();if(!/\.[a-z0-9]{2,5}$/i.test(lp)){const ex=MIMEX[t];if(!ex){rep.failed.push(u);return}lp+='.'+ex}if(kind=='dyn'&&!/^image\//.test(t)){rep.failed.push(u);return}}
+        total+=r.u8.length;F[lp]=r.u8;rep.added++;rep.bytes+=r.u8.length;if(kind!='same'){rep.ext++;fixes.push([u,lp])}
+      };
+      const pool=async()=>{while(i<todo.length){const it=todo[i++];try{await work(it)}catch(e){rep.failed.push(it[0])}}};
+      await Promise.all([pool(),pool(),pool(),pool(),pool(),pool()]);
+      /* arquivos novos (CSS/JS) podem citar mais coisas */
+      let more=false;for(const p of Object.keys(F)){if(TXT.test(p)&&texts[p]===undefined){texts[p]=td.decode(F[p]);more=true}}
+      if(!more)break;scan();
+    }
+    /* troca os enderecos de fora (e /_next/image) pelos arquivos locais */
+    if(fixes.length){
+      const forms=(u)=>{const a=new URL(u),out=new Set([u,u.replace(/&/g,'&amp;'),u.replace(/\//g,'\\/'),u.replace(/^https?:/,''),u.replace(/^https?:/,'').replace(/\//g,'\\/')]);
+        if(a.origin==O){const rel=a.pathname+a.search;out.add(rel);out.add(rel.replace(/&/g,'&amp;'));out.add(rel.replace(/\//g,'\\/'))}return [...out]};
+      const all=[];for(const [u,lp] of fixes)for(const f of forms(u))all.push([f,lp]);
+      all.sort((x,y)=>y[0].length-x[0].length);
+      for(const p of Object.keys(texts)){
+        let t=texts[p],n=t;
+        for(const [f,lp] of all){if(n.indexOf(f)>=0)n=n.split(f).join(f.indexOf('\\/')>=0?lp.replace(/\//g,'\\/'):lp)}
+        if(n!==t){F[p]=te.encode(n);texts[p]=n}
+      }
+    }
+    rep.failed=rep.failed.slice(0,30);
+    return rep;
+  }
+  return{complete};
+}
 
 
 // ===== Velocidade (v49) =====
@@ -396,11 +497,30 @@ function makeSpeed(E){
     const ha=(base||'')+'/.htaccess';
     if(o.htaccess!==false&&F[ha]){
       const cur=td.decode(F[ha]);
-      if(!/Shark Lab: velocidade/.test(cur))F[ha]=te.encode(cur+'\n# Shark Lab: velocidade\n<IfModule mod_deflate.c>\nAddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/x-javascript application/json application/xml image/svg+xml font/ttf font/otf application/vnd.ms-fontobject\n</IfModule>\n<IfModule mod_brotli.c>\nAddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml\n</IfModule>\n<IfModule mod_headers.c>\n<FilesMatch "\\.(woff2?|ttf|otf|eot)$">\nHeader set Cache-Control "public, max-age=2592000"\n</FilesMatch>\n<FilesMatch "\\.(webp|avif|jpe?g|png|gif|svg|ico)$">\nHeader set Cache-Control "public, max-age=604800"\n</FilesMatch>\n<FilesMatch "\\.(js|css)$">\nHeader set Cache-Control "public, max-age=14400"\n</FilesMatch>\n<FilesMatch "[-.][A-Za-z0-9_-]{8,}\\.(js|css|woff2?|webp|avif|jpe?g|png|svg)$">\nHeader set Cache-Control "public, max-age=31536000, immutable"\n</FilesMatch>\n</IfModule>\n')}
+      if(!/Shark Lab: velocidade/.test(cur))F[ha]=te.encode(cur+'\n# Shark Lab: velocidade\n<IfModule mod_deflate.c>\nAddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/x-javascript application/json application/xml image/svg+xml font/ttf font/otf application/vnd.ms-fontobject\n</IfModule>\n<IfModule mod_brotli.c>\nAddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml\n</IfModule>\n<IfModule mod_headers.c>\n<FilesMatch "\\.(woff2?|ttf|otf|eot)$">\nHeader set Cache-Control "public, max-age=2592000"\n</FilesMatch>\n<FilesMatch "\\.(webp|avif|jpe?g|png|gif|svg|ico)$">\nHeader set Cache-Control "public, max-age=604800"\n</FilesMatch>\n<FilesMatch "\\.(js|css)$">\nHeader set Cache-Control "public, max-age=14400"\n</FilesMatch>\n<FilesMatch "[-.][0-9a-f]{8,}\\.(js|css|woff2?|webp|avif|jpe?g|png|svg)$">\nHeader set Cache-Control "public, max-age=31536000, immutable"\n</FilesMatch>\n</IfModule>\n')}
     return rep;
   }
   return{apply,dims,_parseTag:parseTag};
 }
+/* Garante que o navegador leia os acentos certo, em qualquer servidor: declara UTF-8 como a primeira coisa da pagina */
+function fixCharset(h){
+  if(h.indexOf('\uFFFD')>=0)return h;
+  let other=false;
+  const h2=h.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,m=>{
+    if(!/charset\s*=|http-equiv\s*=\s*["']?content-type/i.test(m))return m;
+    const cs=/charset\s*=\s*["']?\s*([\w-]+)/i.exec(m);
+    if(cs&&!/^utf-?8$/i.test(cs[1])){other=true;return m}
+    return '';
+  });
+  if(other)return h;
+  const meta='<meta charset="utf-8">';
+  if(/<head[^>]*>/i.test(h2))return h2.replace(/<head[^>]*>/i,m=>m+meta);
+  if(/<html[^>]*>/i.test(h2))return h2.replace(/<html[^>]*>/i,m=>m+'<head>'+meta+'</head>');
+  const dt=/^\s*<!doctype[^>]*>/i.exec(h2);if(dt)return h2.slice(0,dt[0].length)+meta+h2.slice(dt[0].length);
+  return meta+h2;
+}
+/* texto de edicao com acento vira \uXXXX, assim nao depende de como o navegador adivinha a codificacao */
+const asciiJs=s=>String(s).replace(/[\u0080-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
 /* codigo que roda numa pagina "de trabalho" (computador: janela escondida; celular: a propria tela) para gerar WebP */
 async function speedCanvasEnc(b64,mime,maxW,q){
   const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);

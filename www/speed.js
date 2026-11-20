@@ -224,6 +224,25 @@ function makeSpeed(E){
   }
   return{apply,dims,_parseTag:parseTag};
 }
+/* Garante que o navegador leia os acentos certo, em qualquer servidor: declara UTF-8 como a primeira coisa da pagina */
+function fixCharset(h){
+  if(h.indexOf('\uFFFD')>=0)return h;
+  let other=false;
+  const h2=h.replace(/<meta\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,m=>{
+    if(!/charset\s*=|http-equiv\s*=\s*["']?content-type/i.test(m))return m;
+    const cs=/charset\s*=\s*["']?\s*([\w-]+)/i.exec(m);
+    if(cs&&!/^utf-?8$/i.test(cs[1])){other=true;return m}
+    return '';
+  });
+  if(other)return h;
+  const meta='<meta charset="utf-8">';
+  if(/<head[^>]*>/i.test(h2))return h2.replace(/<head[^>]*>/i,m=>m+meta);
+  if(/<html[^>]*>/i.test(h2))return h2.replace(/<html[^>]*>/i,m=>m+'<head>'+meta+'</head>');
+  const dt=/^\s*<!doctype[^>]*>/i.exec(h2);if(dt)return h2.slice(0,dt[0].length)+meta+h2.slice(dt[0].length);
+  return meta+h2;
+}
+/* texto de edicao com acento vira \uXXXX, assim nao depende de como o navegador adivinha a codificacao */
+const asciiJs=s=>String(s).replace(/[\u0080-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
 /* codigo que roda numa pagina "de trabalho" (computador: janela escondida; celular: a propria tela) para gerar WebP */
 async function speedCanvasEnc(b64,mime,maxW,q){
   const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
@@ -232,4 +251,4 @@ async function speedCanvasEnc(b64,mime,maxW,q){
   const o=await c.convertToBlob({type:'image/webp',quality:q}),ab=new Uint8Array(await o.arrayBuffer());let s2='';const k=0x8000;for(let i=0;i<ab.length;i+=k)s2+=String.fromCharCode.apply(null,ab.subarray(i,i+k));
   return{w,h,b64:btoa(s2)};
 }
-if(typeof module!='undefined')module.exports={makeSpeed,speedCanvasEnc};
+if(typeof module!='undefined')module.exports={makeSpeed,speedCanvasEnc,fixCharset,asciiJs};
