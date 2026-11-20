@@ -55,12 +55,13 @@
     return F;
   }
   const SPA_RE = /<div\s+id=["']root["']\s*>\s*<\/div>/i, KEEP1 = /^\/(favicon[^/]*|robots\.txt|placeholder\.svg|sitemap\.xml|manifest[^/]*|apple-touch-icon[^/]*|og[^/]*\.(png|jpg|webp))$/i;
+  function isSpaHtml(h) { const mod = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=|<script\b[^>]*\bsrc=[^>]*\btype=["']module["']/i.test(h) || /<script\b[^>]*\btype=["']module["'][^>]*>[^<]*import\(\s*["']\/[^"']+\.m?js/i.test(h), abs = /["'(]\/(assets|_next|build)\/[^"')\s]+\.m?js/i.test(h); return SPA_RE.test(h) || (/<div\s+id=["']root["'][^>]*>/i.test(h) && mod) || (mod && abs) || /\$_TSR|__TSR__|__remixContext|__NEXT_DATA__/.test(h) }
   async function funnelFiles(steps) {
     const out = {}; let spa = false;
     for (const s of steps) {
-      const F = await siteFiles(s.pid, s.inject, null), slug = String(s.slug || '').replace(/^\/+|\/+$/g, '');
+      const F = await siteFiles(s.pid, s.inject, s.ops || null), slug = String(s.slug || '').replace(/^\/+|\/+$/g, '');
       let h = td.decode(F['/index.html'] || new Uint8Array()); delete F['/index.html']; delete F['/_redirects']; delete F['/.htaccess'];
-      const isSpa = SPA_RE.test(h);
+      const isSpa = isSpaHtml(h);
       if (slug) {
         if (isSpa) { spa = true; h = h.replace(/<head[^>]*>/i, m => m + '<script>(function(){try{var p=location.pathname.replace(/\\/+$/,"");if(p){var q=location.search;history.replaceState(history.state,"","/?sl=' + slug + '"+(q?"&"+q.slice(1):"")+location.hash)}}catch(e){}})()<\/script>') }
         out['/' + slug + '/index.html'] = te.encode(h);
@@ -75,6 +76,59 @@
     if (!out['/index.html']) { const f = steps.find(x => x.slug) || {}; out['/index.html'] = te.encode('<!doctype html><meta charset=utf-8><meta http-equiv=refresh content="0;url=/' + (f.slug || '') + '/">') }
     if (!out['/_redirects']) out['/_redirects'] = te.encode('/*  /index.html  200\n');
     return out;
+  }
+  /* ---------- publicar na Hostinger pelo ponto de encontro (mesmas regras do computador) ---------- */
+  const HTC = '\n# Shark Lab: o navegador e o CDN sempre confirmam se ha versao mais nova das paginas\n<IfModule mod_headers.c>\n<FilesMatch "\\.(html?|php)$">\nHeader set Cache-Control "no-cache, must-revalidate"\n</FilesMatch>\n</IfModule>\n';
+  const cat = (a, b) => { const u = new Uint8Array(a.length + b.length); u.set(a, 0); u.set(b, a.length); return u };
+  async function hostFiles(mirror, inject, ops, steps) {
+    const F = steps ? await funnelFiles(steps) : await siteFiles(mirror, inject, ops); delete F['/_redirects'];
+    if (!F['/.htaccess']) F['/.htaccess'] = te.encode(HTA + HTC); else if (!/Cache-Control/i.test(td.decode(F['/.htaccess']))) F['/.htaccess'] = cat(F['/.htaccess'], te.encode(HTC));
+    return F;
+  }
+  async function pathFiles(mirror, inject, ops, slug, nr) {
+    const out = await funnelFiles([{ pid: mirror, slug, name: slug, inject, ops }]); delete out['/index.html']; delete out['/_redirects']; delete out['/.htaccess'];
+    const k = '/' + slug + '/index.html';
+    if (out[k]) {
+      let h0 = td.decode(out[k]); const _a = 'history.replaceState(history.state,"","/?sl=' + slug + '"+(q?"&"+q.slice(1):"")+location.hash)', _b = 'history.replaceState(history.state,"","/"+q+location.hash)';
+      if (h0.indexOf(_a) >= 0) { h0 = h0.replace(_a, () => _b); out[k] = te.encode(h0) }
+      if (!nr && h0.indexOf(_b) >= 0) out[k] = te.encode(h0.replace(/<head[^>]*>/i, m => m + '<script>addEventListener("load",function(){setTimeout(function(){try{if(location.pathname!="/' + slug + '/"){History.prototype.replaceState.call(history,history.state,"","/' + slug + '/"+location.search.replace(/([?&])sl=[^&]*&?/,"$1").replace(/[?&]$/,"")+location.hash)}}catch(e){}},400)})<\/script>'));
+    }
+    out['/' + slug + '/.htaccess'] = te.encode(HTC.replace(/^\n/, ''));
+    return out;
+  }
+  async function liveCheck(domain, tok, gap) {
+    const d = String(domain || '').trim().replace(/\/+$/, ''), B = /^https?:\/\//i.test(d) ? d : 'https://' + d, out = { state: 'net', status: 0, srv: '', err: '' };
+    const get = async u => { try { const r = await nfetch(u, { headers: { accept: 'text/html,*/*' } }); const body = await r.text(); return { status: r.status, server: r.headers.get('server') || '', body } } catch (e) { return { err: String(e && e.message || e) } } };
+    for (let i = 0; i < 4; i++) {
+      if (i) await new Promise(r => setTimeout(r, gap || 3000));
+      const a = await get(B + '/_sl_pub.json?r=' + Date.now() + 'x' + i); if (a.err) { out.state = 'net'; out.err = a.err; continue }
+      out.err = ''; out.status = a.status; out.srv = a.server; let srv = false; try { srv = JSON.parse(a.body).token === tok } catch { }
+      if (!srv) { out.state = /netlify/i.test(a.server) ? 'netlify' : 'outro'; continue }
+      const p = await get(B + '/'); if (p.err) { out.state = 'net'; out.err = p.err; continue }
+      if (p.body.indexOf('sl-pub:' + tok) >= 0) { out.state = 'ok'; return out }
+      out.state = 'cache';
+    }
+    return out;
+  }
+  const hubNeeds = 'Para publicar pelo celular, conecte a sincronização com o computador (Configurações > Sincronização entre aparelhos).';
+  async function hubPublish({ h, mirror, inject, ops, steps, owner, domain, force, liveGap, path: sp, mk, nr }) {
+    const HUB = window.SLHUB; if (!HUB) return { ok: false, error: hubNeeds };
+    const dir = String((h && h.dir) || '').trim().replace(/\\/g, '/').replace(/\/+$/, ''); if (!dir || dir == '/') return { ok: false, error: hubNeeds };
+    const slug = String(sp || '').replace(/^\/+|\/+$/g, '');
+    const F = slug && !steps ? await pathFiles(mirror, inject, ops, slug, nr) : await hostFiles(mirror, inject, ops, steps);
+    const tok = [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, '0')).join('');
+    for (const p in F) if (/(^|\/)index\.html$/.test(p)) F[p] = cat(F[p], te.encode('\n<!--sl-pub:' + tok + '-->'));
+    const man = {}, list = []; for (const p of Object.keys(F).sort()) { const u = F[p], hh = await sha1(u); man[p] = [u.length, hh]; list.push({ h: hh, u8: u }) }
+    let r = null;
+    for (let t = 0; t < 3; t++) {
+      await HUB.putBlobs(list);
+      r = await HUB.hubJson('publish', '', { dir, slug, files: man, tok, owner: owner || {}, force: !!force, mk: !!mk });
+      if (r.status == 422 && r.json && r.json.error == 'faltam') continue; break;
+    }
+    if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v47) e deixe a sincronização rodar uma vez.' };
+    const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
+    const live = domain ? await liveCheck(domain, tok, liveGap) : null;
+    return { ok: true, n: j.n, live };
   }
   const HTA = 'RewriteEngine On\nRewriteBase /\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule . /index.html [L]\n';
   async function filesStatic(mirror, inject, ops, steps) { const F = steps ? await funnelFiles(steps) : await siteFiles(mirror, inject, ops); delete F['/_redirects']; if (!F['/.htaccess']) F['/.htaccess'] = te.encode(HTA); return F }
@@ -320,10 +374,10 @@ Regras:
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
     hftest: async ({ h }) => {
-      const n = SN(); if (!n) return { ok: false, error: 'O FTP só funciona no aplicativo do celular.' };
-      try { const o = ftpOpts(h), dir = String(h.dir || '').trim(); const r = await n.ftpTest({ ...o, dir }); return { ok: true, exists: r.exists !== false } } catch (e) { return { ok: false, error: ftpErr(e) } }
+      const HUB = window.SLHUB; if (!HUB) return { ok: false, error: hubNeeds };
+      try { const r = await HUB.hubJson('check', '', { dir: String((h && h.dir) || '').trim() }); return r.json && r.json.ok ? { ok: true, exists: !!r.json.exists } : { ok: false, error: 'O ponto de encontro não respondeu direito (atualize o app do computador e tente de novo).' } } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
-    hftp: async () => ({ ok: false, error: 'Publicar na Hostinger pelo celular ainda não está liberado nesta versão, para não bagunçar os endereços que já estão no ar. Publique pelo computador: a página já está sincronizada.' }),
+    hftp: async a => { try { return await hubPublish(a) } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
     hftp_antigo: async ({ h, mirror, inject, ops, steps }) => {
       const n = SN(); if (!n) return { ok: false, error: 'O FTP só funciona no aplicativo do celular.' };
       let sid = null;

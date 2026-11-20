@@ -21,6 +21,13 @@ def R(a, b):
     js = js.replace(a, b)
 # clonar: botão Cancelar e ignorar resultado se cancelado
 R("`<p class=mut><i class=sp2></i>Copiando ${esc(h)}...</p>`,[]);api.mirror({id,url:u}).then(r=>{b.remove();if(!r.ok)", "`<p class=mut><i class=sp2></i>Copiando ${esc(h)}... pode levar até 1 minuto.</p>`,[['Cancelar',()=>{window.__c=id}]]);api.mirror({id,url:u}).then(r=>{b.remove();if(window.__c==id)return;if(!r.ok)")
+
+# publicar pelo celular usa o ponto de encontro da sincronização (sem FTP no celular)
+import re as _re
+_a = '<div class="blk box" style="margin-top:14px"><h4>Hostinger (publicação por FTP)</h4>'
+_i = js.index(_a); _j = js.index('${domBlock()}', _i)
+js = js[:_i] + '<div class="blk box" style="margin-top:14px"><h4>Hostinger</h4><p class=mut style="margin:0;font-size:12px">${(cfg.sync&&cfg.sync.on&&cfg.ht&&cfg.ht.hub)?"Publicação pronta: o celular publica pelo ponto de encontro da sincronização, na sua Hostinger. Nada para configurar aqui. Pasta do site: <code>"+esc(cfg.ht.dir)+"</code>.":"Para publicar pelo celular, conecte a sincronização abaixo. O celular usa a configuração da Hostinger do computador, sem pedir a senha do FTP."}</p></div>' + js[_j:]
+R("if(pth&&HA&&r.live&&r.live.state=='ok')probeFlow(HA,d,pth);", "if(!api.mobile&&pth&&HA&&r.live&&r.live.state=='ok')probeFlow(HA,d,pth);")
 out = head + body_js + tail
 os.makedirs(W + '/__sl', exist_ok=True)
 open(W + '/index.html', 'w', encoding='utf8').write(out)
