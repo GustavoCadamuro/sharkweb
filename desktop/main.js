@@ -121,16 +121,16 @@ return R});
 ipcMain.handle('dtest',async(_,{kind,ck,mt})=>{try{if(kind=='ck'){const t=await ckToken((ck.id||'').trim(),(ck.sec||'').trim());const j=await jf(CKU()+'/public_api/orders/?limit=1',{headers:{Authorization:'Bearer '+t}});return{ok:true,info:'Conectado. Total de pedidos: '+(j.count!=null?j.count:'?')}}
 const id=String(mt.acct||'').split(/[,;\s]+/)[0].replace(/\D/g,'');const j=await jf(FBU()+'/'+((mt.ver||'').trim()?(mt.ver.trim()+'/'):'')+'act_'+id+'?fields=name,currency,account_status&access_token='+encodeURIComponent((mt.tok||'').trim()));return{ok:true,info:'Conectado: '+j.name+' ('+j.currency+')',cur:j.currency}}catch(e){return{ok:false,error:String(e.message||e)}}});
 ipcMain.handle('test',async(_,{v})=>{try{const r=await fetch('https://api.netlify.com/api/v1/user',{headers:{Authorization:'Bearer '+v}});return{ok:r.ok,status:r.status}}catch{return{ok:false}}});
-ipcMain.handle('deploy',async(_,{token,siteId,mirror,inject,domain,ops,steps})=>{try{const B='https://api.netlify.com/api/v1/',H={Authorization:'Bearer '+token},J={...H,'Content-Type':'application/json'};
+ipcMain.handle('deploy',async(_,{token,siteId,mirror,inject,domain,ops,steps,speed})=>{try{const B='https://api.netlify.com/api/v1/',H={Authorization:'Bearer '+token},J={...H,'Content-Type':'application/json'};
 const ck=async r=>{if(!r.ok)throw new Error('Netlify '+r.status+': '+(await r.text()).slice(0,200));return r.json()};
 if(!siteId)siteId=(await ck(await fetch(B+'sites',{method:'POST',headers:J,body:'{}'}))).id;
-const F=steps?funnelFiles(steps):siteFiles(mirror,inject,ops);
+const F=steps?funnelFiles(steps):siteFiles(mirror,inject,ops);let spr=null;if(speed&&speed.on){spr=await speedRun(F,{slug:'',trk:!!speed.trk,htaccess:false});if(spr&&spr.imgs)F['/_headers']=Buffer.from('/_o/*\n  Cache-Control: public, max-age=31536000, immutable\n')}
 const dg={};for(const p in F)dg[p]=crypto.createHash('sha1').update(F[p]).digest('hex');
 const d=await ck(await fetch(B+`sites/${siteId}/deploys`,{method:'POST',headers:J,body:JSON.stringify({files:dg})}));
 const todo=Object.keys(F).filter(p=>!d.required||d.required.includes(dg[p]));
 for(let i=0;i<todo.length;i+=8)await Promise.all(todo.slice(i,i+8).map(p=>fetch(B+`deploys/${d.id}/files${p.split('/').map(encodeURIComponent).join('/')}`,{method:'PUT',headers:{...H,'Content-Type':'application/octet-stream'},body:F[p]}).then(r=>{if(!r.ok)throw new Error('Upload '+r.status+' '+p)})));
 if(domain){const ap=domain.replace(/^www\./i,''),apex=/^[^.]+(\.(com|net|org)\.br|\.[a-z]{2,})$/i.test(ap);await ck(await fetch(B+'sites/'+siteId,{method:'PATCH',headers:J,body:JSON.stringify({custom_domain:ap,domain_aliases:apex?['www.'+ap]:[]})}))}
-const s=await ck(await fetch(B+'sites/'+siteId,{headers:H}));return{ok:true,siteId,url:(domain&&s.custom_domain)?'https://'+s.custom_domain:(s.ssl_url||s.url),host:s.name+'.netlify.app'}}catch(e){return{ok:false,error:String(e.message||e)}}});
+const s=await ck(await fetch(B+'sites/'+siteId,{headers:H}));return{ok:true,siteId,url:(domain&&s.custom_domain)?'https://'+s.custom_domain:(s.ssl_url||s.url),host:s.name+'.netlify.app',speed:spr}}catch(e){return{ok:false,error:String(e.message||e)}}});
 ipcMain.handle('domain',async(_,{token,siteId,domain})=>{try{const dns=require('dns').promises,H={Authorization:'Bearer '+token},B='https://api.netlify.com/api/v1/sites/'+siteId,ap=domain.replace(/^www\./i,''),apex=/^[^.]+(\.(com|net|org)\.br|\.[a-z]{2,})$/i.test(ap);
 let s=await(await fetch(B,{headers:H})).json();if(s.custom_domain!==ap){const pr=await fetch(B,{method:'PATCH',headers:{...H,'Content-Type':'application/json'},body:JSON.stringify({custom_domain:ap,domain_aliases:apex?['www.'+ap]:[]})});if(!pr.ok)throw new Error('Netlify '+pr.status+': '+(await pr.text()).slice(0,200));s=await(await fetch(B,{headers:H})).json()}const host=s.name+'.netlify.app',tr=c=>c.replace(/\.$/,'');
 const ips=await dns.resolve4(ap).catch(()=>[]),cn=await dns.resolveCname(apex?'www.'+ap:ap).catch(()=>[]);
@@ -162,16 +162,272 @@ const ftpOpts=h=>{const m=String(h.host||'').trim().match(/^(.*?)(?::(\d+))?$/);
 ipcMain.handle('hftest',async(_,{h})=>{const ftp=require('basic-ftp'),c=new ftp.Client(30000);try{await c.access(ftpOpts(h));const dir=String(h.dir||'').trim();let ex=true;if(dir&&dir!='/'){try{await c.cd(dir)}catch{ex=false}}return{ok:true,exists:ex}}catch(e){return{ok:false,error:ftpErr(e)}}finally{c.close()}});
 const ftpRetry=m=>/ECONNRESET|EPIPE|ECONNABORTED|socket|closed|ETIMEDOUT|timeout|Timeout|421|426|425/i.test(m)&&!/530|Login|auth|ENOTFOUND|ECONNREFUSED/i.test(m);
 ipcMain.handle('hftp',async(_,a)=>{const st={done:new Set(),tok:crypto.randomBytes(8).toString('hex')};let last=null;for(let t=0;t<4;t++){const r=await hftpRun(a,st);if(!(r&&r.retry))return r;last=r;await new Promise(z=>setTimeout(z,1500*(t+1)))}return{ok:false,error:'A conexão com a Hostinger caiu 4 vezes seguidas ('+String(last.err&&last.err.message||last.err)+'). Os arquivos já enviados ficam no servidor; clique em Publicar de novo em alguns minutos. Se repetir, confira em hPanel > Arquivos > Contas FTP se não há limite de conexões.'}});
-async function hftpRun({h,mirror,inject,ops,steps,owner,domain,force,liveGap,path:sp,mk,nr},st){const ftp=require('basic-ftp'),{Readable,Writable}=require('stream'),c=new ftp.Client(60000);try{const dir=String(h.dir||'').trim().replace(/\\/g,'/');if(!dir||dir=='/')return{ok:false,error:'Informe a pasta do site no servidor (a pasta do subdomínio), nas configurações.'};const slug=String(sp||'').replace(/^\/+|\/+$/g,'');await c.access(ftpOpts(h));
+async function hftpRun({h,mirror,inject,ops,steps,owner,domain,force,liveGap,path:sp,mk,nr,speed},st){const ftp=require('basic-ftp'),{Readable,Writable}=require('stream'),c=new ftp.Client(60000);try{const dir=String(h.dir||'').trim().replace(/\\/g,'/');if(!dir||dir=='/')return{ok:false,error:'Informe a pasta do site no servidor (a pasta do subdomínio), nas configurações.'};const slug=String(sp||'').replace(/^\/+|\/+$/g,'');await c.access(ftpOpts(h));
 if(!mk){try{await c.cd(dir)}catch{return{ok:false,noDir:dir}}}
-const F=slug&&!steps?pathFiles(mirror,inject,ops,slug,nr):filesStatic(mirror,inject,ops,steps),tok=st.tok;await c.ensureDir(dir);const base=(await c.pwd()).replace(/\/+$/,''),mdir=base+(slug?'/'+slug:'');
+const F=slug&&!steps?pathFiles(mirror,inject,ops,slug,nr):filesStatic(mirror,inject,ops,steps),tok=st.tok;let spr=null;if(speed&&speed.on)spr=await speedRun(F,{slug,trk:!!speed.trk});await c.ensureDir(dir);const base=(await c.pwd()).replace(/\/+$/,''),mdir=base+(slug?'/'+slug:'');
 let prev=null;try{const ch=[];await c.downloadTo(new Writable({write(b,_e,cb){ch.push(b);cb()}}),mdir+'/_sl_pub.json');prev=JSON.parse(Buffer.concat(ch).toString('utf8'))}catch{}
 if(!force&&prev&&prev.owner&&owner&&prev.owner!==owner.id)return{ok:false,conflict:{name:prev.name||'outro projeto',at:prev.at||0}};
 if(slug){const bad=[],L={};for(const p of Object.keys(F)){if(p.startsWith('/'+slug+'/'))continue;const d=p.slice(0,p.lastIndexOf('/')),nm=p.slice(p.lastIndexOf('/')+1);if(!(d in L)){L[d]={};try{for(const e of await c.list(base+d))if(e.isFile)L[d][e.name]=e.size}catch{}}const sz=L[d][nm]===undefined?-1:L[d][nm];if(sz>=0){if(sz!==F[p].length&&!KEEP1.test(p))bad.push(p);else delete F[p]}}if(bad.length)return{ok:false,error:'Estes arquivos já existem neste domínio com conteúdo diferente (de outra página): '+bad.slice(0,4).join(', ')+(bad.length>4?' e mais '+(bad.length-4):'')+'. Publicar aqui poderia quebrar a página que já está no ar. Use uma página feita do mesmo modelo ou outro domínio.'}}
 for(const p in F)if(/(^|\/)index\.html$/.test(p))F[p]=Buffer.concat([Buffer.from(F[p]),Buffer.from('\n<!--sl-pub:'+tok+'-->')]);
 const ks=Object.keys(F).sort();let cur='',n=0;for(const p of ks){const rel=p.replace(/^\/+/,'').split('/'),name=rel.pop(),sub=rel.join('/');if(sub!==cur){await c.ensureDir(base+(sub?'/'+sub:''));cur=sub}if(!st.done.has(p)){await c.uploadFrom(Readable.from([Buffer.from(F[p])]),name);st.done.add(p)}n++}
 await c.ensureDir(mdir);await c.uploadFrom(Readable.from([Buffer.from(JSON.stringify({token:tok,at:Date.now(),owner:owner&&owner.id||'',name:owner&&owner.name||''}))]),'_sl_pub.json');c.close();
-const live=domain?await liveCheck(domain,tok,liveGap):null;return{ok:true,n,live}}catch(e){const m=String(e&&e.message||e);if(ftpRetry(m))return{retry:1,err:e};return{ok:false,error:ftpErr(e)}}finally{c.close()}}
+const live=domain?await liveCheck(domain,tok,liveGap):null;return{ok:true,n,live,speed:spr}}catch(e){const m=String(e&&e.message||e);if(ftpRetry(m))return{retry:1,err:e};return{ok:false,error:ftpErr(e)}}finally{c.close()}}
+
+
+// ===== Velocidade (v49) =====
+/* Shark Lab - otimizador de velocidade das paginas publicadas (igual no computador e no celular).
+   Trabalha sobre o conjunto de arquivos que vai ser publicado (F = {caminho: bytes}); nunca mexe nos originais.
+   E = { enc(u8,mime,maxW,q) -> {u8,w,h}|null, sha1(u8) -> hex, cacheGet(key), cachePut(key,u8) } */
+function makeSpeed(E){
+  const te=new TextEncoder(),td=new TextDecoder();
+  const hex8=s=>String(s).slice(0,8);
+  const BIGW=1600,Q=0.8;
+  /* ---------- tamanho das imagens pelo cabecalho ---------- */
+  function dims(u,p){
+    try{
+      if(/\.png$/i.test(p)&&u.length>24&&u[0]==0x89&&u[1]==0x50)return{w:(u[16]<<24|u[17]<<16|u[18]<<8|u[19])>>>0,h:(u[20]<<24|u[21]<<16|u[22]<<8|u[23])>>>0};
+      if(/\.jpe?g$/i.test(p)&&u[0]==0xFF&&u[1]==0xD8){let i=2;while(i<u.length-9){if(u[i]!=0xFF){i++;continue}const m=u[i+1];if(m==0xFF){i++;continue}if(m>=0xC0&&m<=0xCF&&m!=0xC4&&m!=0xC8&&m!=0xCC)return{h:u[i+5]<<8|u[i+6],w:u[i+7]<<8|u[i+8]};if(m==0xD8||m==0x01||(m>=0xD0&&m<=0xD7)){i+=2;continue}i+=2+(u[i+2]<<8|u[i+3])}}
+      if(/\.gif$/i.test(p)&&u[0]==0x47)return{w:u[6]|u[7]<<8,h:u[8]|u[9]<<8};
+      if(/\.webp$/i.test(p)&&u[0]==0x52&&u[8]==0x57){const t=String.fromCharCode(u[12],u[13],u[14],u[15]);if(t=='VP8X')return{w:1+(u[24]|u[25]<<8|u[26]<<16),h:1+(u[27]|u[28]<<8|u[29]<<16)};if(t=='VP8 ')return{w:(u[26]|u[27]<<8)&0x3fff,h:(u[28]|u[29]<<8)&0x3fff};if(t=='VP8L'){const b=u[21]|u[22]<<8|u[23]<<16|u[24]<<24;return{w:1+(b&0x3fff),h:1+((b>>14)&0x3fff)}}}
+    }catch{}
+    return null;
+  }
+  /* ---------- etiquetas HTML ---------- */
+  const TAG_IMG=/<img\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi;
+  const ATTR=/([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'<>`=]+)))?/g;
+  function parseTag(t){
+    const m=/^<([A-Za-z][A-Za-z0-9]*)((?:[^>"']|"[^"]*"|'[^']*')*?)(\/?)>$/.exec(t);if(!m)return null;
+    const a=[];ATTR.lastIndex=0;let r;const s=m[2];while((r=ATTR.exec(s))){a.push([r[1],r[2]!==undefined?r[2]:r[3]!==undefined?r[3]:r[4]!==undefined?r[4]:null])}
+    return{n:m[1],a,sc:m[3]};
+  }
+  const ser=t=>'<'+t.n+t.a.map(x=>' '+x[0]+(x[1]===null?'':'="'+String(x[1]).replace(/"/g,'&quot;')+'"')).join('')+(t.sc?' /':'')+'>';
+  const getA=(t,k)=>{k=k.toLowerCase();for(const x of t.a)if(x[0].toLowerCase()==k)return x[1];return undefined};
+  const hasA=(t,k)=>getA(t,k)!==undefined;
+  const setA=(t,k,v)=>{const l=k.toLowerCase();for(const x of t.a)if(x[0].toLowerCase()==l){x[1]=v;return}t.a.push([k,v])};
+  /* ---------- caminhos ---------- */
+  const dirOf=p=>p.slice(0,p.lastIndexOf('/')+1);
+  function norm(p){const out=[];for(const s of p.split('/')){if(s==''||s=='.')continue;if(s=='..'){out.pop();continue}out.push(s)}return '/'+out.join('/')}
+  function resolve(from,ref){
+    ref=String(ref||'').trim();if(!ref||/^(data:|blob:|https?:|\/\/|#|mailto:|tel:|javascript:)/i.test(ref))return null;
+    ref=ref.split('#')[0].split('?')[0];let p=ref[0]=='/'?norm(ref):norm(dirOf(from)+ref);
+    return p;
+  }
+  function relPath(fromFile,to){
+    const a=dirOf(fromFile).split('/').filter(Boolean),b=to.split('/').filter(Boolean),f=b.pop();let i=0;while(i<a.length&&i<b.length&&a[i]==b[i])i++;
+    return '../'.repeat(a.length-i)+b.slice(i).concat([f]).join('/');
+  }
+  const KEEP_EXT=/\.(jpe?g|png)$/i;
+  /* ---------- a funcao principal ---------- */
+  async function apply(F,o){
+    o=o||{};const rep={imgs:0,from:0,to:0,files:0,notes:[]};
+    const slug=String(o.slug||'').replace(/^\/+|\/+$/g,''),base=slug?'/'+slug:'';
+    const keys=Object.keys(F),isHtml=p=>/\.html?$/i.test(p),isCss=p=>/\.css$/i.test(p),isJs=p=>/\.m?js$/i.test(p);
+    const inScope=p=>!base||p.startsWith(base+'/');
+    const T={};for(const p of keys)if(inScope(p)&&(isHtml(p)||isCss(p)||isJs(p)))T[p]=td.decode(F[p]);const changed=new Set();
+    const info={};
+    for(const p of keys){if(/\.(jpe?g|png|gif|webp)$/i.test(p)){const d=dims(F[p],p);if(d)info[p]=Object.assign(d,{size:F[p].length})}}
+    /* 1) quais imagens sao usadas e como */
+    const used=new Set();
+    const URLRE=/url\(\s*(['"]?)([^'")]+)\1\s*\)/gi;
+    const scan=(text,from,kind)=>{
+      if(kind=='js'){const re=/["'](\/[^"'\s?#\\]+\.(?:jpe?g|png))["']/gi;let m;while((m=re.exec(text))){const r=resolve(from,m[1]);if(r&&info[r])used.add(r)}return}
+      let m;URLRE.lastIndex=0;while((m=URLRE.exec(text))){const r=resolve(from,m[2]);if(r&&info[r])used.add(r)}
+      if(kind=='html'){const re=/\b(?:src|poster|data-src|data-lazy-src)\s*=\s*("([^"]*)"|'([^']*)')/gi;while((m=re.exec(text))){const r=resolve(from,m[2]!==undefined?m[2]:m[3]);if(r&&info[r])used.add(r)}
+        const rs=/\bsrcset\s*=\s*("([^"]*)"|'([^']*)')/gi;while((m=rs.exec(text))){for(const part of String(m[2]!==undefined?m[2]:m[3]).split(',')){const r=resolve(from,part.trim().split(/\s+/)[0]);if(r&&info[r])used.add(r)}}}
+    };
+    for(const p in T)scan(T[p],p,isHtml(p)?'html':isCss(p)?'css':'js');
+    /* 2) gera as versoes leves */
+    const conv={};
+    const cands=[...used].filter(p=>KEEP_EXT.test(p)&&info[p]&&info[p].size>=6000&&!/\/_o\//.test(p));
+    let cursor=0;
+    const work=async p=>{
+      const u=F[p],d=info[p],mime=/\.png$/i.test(p)?'image/png':'image/jpeg',sh=hex8(await E.sha1(u));
+      const W=Math.min(d.w||BIGW,BIGW),ws=[];[480,960].forEach(x=>{if(x<W*0.85)ws.push(x)});ws.push(W);
+      const stem=(p.split('/').pop().replace(/\.[^.]+$/,'').replace(/[^A-Za-z0-9_-]+/g,'-').slice(0,40)||'img');
+      const vs=[];
+      for(const w of ws){
+        const q=mime=='image/png'?0.85:Q,key='sp1-'+sh+'-'+w+'-'+Math.round(q*100);let out=E.cacheGet?await E.cacheGet(key):null,ow=null,oh=null;
+        if(out){const dd=dims(out,'x.webp');if(dd){ow=dd.w;oh=dd.h}}
+        if(!out){const r=await E.enc(u,mime,w,q);if(!r)return;out=r.u8;ow=r.w;oh=r.h;if(E.cachePut)await E.cachePut(key,out)}
+        vs.push({w:ow||w,h:oh,u8:out,name:stem+'.'+sh+'-'+w+'.webp'});
+      }
+      const big=vs[vs.length-1];
+      if(!(big.u8.length<u.length*0.9))return; /* nao compensa: fica o original */
+      conv[p]={vs:vs.filter(v=>v===big||v.u8.length<big.u8.length*0.95),big,w0:d.w,h0:d.h};
+    };
+    const pool=async()=>{while(cursor<cands.length){const p=cands[cursor++];try{await work(p)}catch(e){rep.notes.push('imagem '+p+': '+String(e&&e.message||e).slice(0,80))}}};
+    await Promise.all([pool(),pool()]);
+    const outDir=(base||'')+'/_o/';
+    for(const p in conv){const c=conv[p];c.vs.forEach(v=>{v.path=outDir+v.name;F[v.path]=v.u8});c.big.path=outDir+c.big.name;F[c.big.path]=c.big.u8;rep.imgs++;rep.from+=F[p].length;rep.to+=c.big.u8.length}
+    if(rep.imgs){const hta=outDir+'.htaccess';F[hta]=te.encode('# Shark Lab: arquivos otimizados nunca mudam de conteudo, entao podem ficar em cache por 1 ano\n<IfModule mod_headers.c>\nHeader set Cache-Control "public, max-age=31536000, immutable"\n</IfModule>\n<IfModule mod_mime.c>\nAddType image/webp .webp\n</IfModule>\n')}
+    const toRef=(from,orig,newAbs)=>orig[0]=='/'?newAbs:relPath(from,newAbs);
+    /* 3) reescreve CSS e JS */
+    const BGR={}; /* regras de fundo por arquivo/bloco: [{sel,c}] */
+    const cssProc=(text,from,key)=>{
+      let t=text.replace(URLRE,(m,q,r)=>{const a=resolve(from,r);const c=a&&conv[a];if(!c)return m;return 'url('+q+toRef(from,r.trim(),c.big.path)+q+')'});
+      t=t.replace(/@font-face\s*\{[^}]*\}/gi,b=>/font-display\s*:/i.test(b)?b:b.replace(/\}$/,';font-display:swap}'));
+      /* fundos de tela cheia: no celular carrega a versao menor (so regras de nivel zero, uma imagem so, sem gradiente) */
+      const rules=[],ov=[];let depth=0,st=0,selStart=0,i=0;
+      const mk=(sel,body)=>{
+        sel=sel.trim();if(!sel||sel[0]=='@')return;
+        if(/gradient|image-set/i.test(body)||(body.match(/url\(/gi)||[]).length!=1)return;
+        const dm=/(?:^|;)\s*(background(?:-image)?)\s*:([^;]*)/i.exec(body);if(!dm)return;
+        const um=/url\(\s*(['"]?)([^'")]+)\1\s*\)/i.exec(dm[2]);if(!um)return;
+        const bigAbs=resolve(from,um[2]);if(!bigAbs)return;
+        let c=null;for(const k in conv)if(conv[k].big.path==bigAbs){c=conv[k];break}
+        if(!c)return;rules.push({sel,c});
+        const imp=/!important/i.test(dm[2])?' !important':'';
+        const v9=c.vs.find(v=>v.w>=900&&v!==c.big),v4=c.vs.find(v=>v.w>=400&&v.w<900);
+        if(v9)ov.push('@media(max-width:900px){'+sel+'{background-image:url('+toRef(from,um[2].trim(),v9.path)+')'+imp+'}}');
+        if(v4)ov.push('@media(max-width:480px){'+sel+'{background-image:url('+toRef(from,um[2].trim(),v4.path)+')'+imp+'}}');
+      };
+      for(i=0;i<t.length;i++){const ch=t[i];if(ch=='{'){if(depth==0)st=i;depth++}else if(ch=='}'){depth--;if(depth==0)mk(t.slice(selStart,st),t.slice(st+1,i));if(depth<=0){depth=0;selStart=i+1}}}
+      BGR[key]=rules;
+      if(ov.length)t+='\n/* Shark Lab */\n'+ov.join('\n')+'\n';
+      return t;
+    };
+    for(const p in T){
+      if(!isCss(p)&&!isJs(p))continue;let t=T[p],n=t;
+      if(isCss(p))n=cssProc(t,p,p);
+      else if(rep.imgs){n=t.replace(/(["'])(\/[^"'\s?#\\]+\.(?:jpe?g|png))\1/gi,(m,q,r)=>{const c=conv[norm(r)];return c?q+c.big.path+q:m})}
+      if(n!==t){F[p]=te.encode(n);T[p]=n;rep.files++;changed.add(p)}
+    }
+    /* 4) reescreve as paginas HTML */
+    let hasAuto=false;for(const p in T){if(isCss(p)&&/\b(img|video)\b[^{}]*\{[^}]*height\s*:\s*auto/i.test(T[p]))hasAuto=true;if(isHtml(p)&&/<style[^>]*>[^<]*\bimg\b[^{}]*\{[^}]*height\s*:\s*auto/i.test(T[p]))hasAuto=true}
+    for(const p of Object.keys(T)){
+      if(!isHtml(p))continue;let h=T[p];const o0=h;let sb=0;
+      h=h.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,(m,a,b,c2)=>a+cssProc(b,p,p+'#s'+(sb++))+c2);
+      /* trechos que nao podem ser tocados: scripts, noscript, comentarios e picture */
+      const frozen=[];const hold=re=>{h=h.replace(re,m=>{frozen.push(m);return '\u0000'+(frozen.length-1)+'\u0001'})};
+      hold(/<!--[\s\S]*?-->/g);hold(/<script\b[\s\S]*?<\/script>/gi);hold(/<noscript\b[\s\S]*?<\/noscript>/gi);
+      const pics=[];h.replace(/<picture\b[\s\S]*?<\/picture>/gi,(m,i)=>{pics.push([i,i+m.length]);return m});
+      let seen=0,first=null;
+      h=h.replace(TAG_IMG,(tag,pos)=>{
+        const t=parseTag(tag);if(!t)return tag;
+        const src=getA(t,'src');if(src==null)return tag;
+        const inPic=pics.some(x=>pos>=x[0]&&pos<x[1]);
+        const a=resolve(p,src),c=a&&conv[a],inf=a&&info[a];
+        const isData=/^data:/i.test(src)||/\.svg(\?|#|$)/i.test(src);
+        if(c&&!inPic&&!hasA(t,'srcset')){
+          const w=parseInt(getA(t,'width'),10);
+          setA(t,'srcset',c.vs.map(v=>toRef(p,src,v.path)+' '+v.w+'w').join(', '));
+          setA(t,'sizes',w>0&&w<1600?'(max-width: '+w+'px) 100vw, '+w+'px':'100vw');
+          setA(t,'src',toRef(p,src,c.big.path));
+        }else if(c){setA(t,'src',toRef(p,src,c.big.path))}
+        else if(hasA(t,'srcset')){
+          const ss=getA(t,'srcset').split(',').map(x=>{const q=x.trim().split(/\s+/),r=resolve(p,q[0]),cc=r&&conv[r];if(!cc)return x.trim();const dw=/^(\d+)w$/.exec(q[1]||'');let v=cc.big;if(dw){const need=+dw[1];v=cc.vs.find(z=>z.w>=need)||cc.big}return toRef(p,q[0],v.path)+(q[1]?' '+q[1]:'')});
+          setA(t,'srcset',ss.join(', '));
+        }
+        const nat=c?{w:c.w0,h:c.h0}:inf;
+        if(hasAuto&&!inPic&&nat&&nat.w>0&&nat.h>0&&!hasA(t,'width')&&!hasA(t,'height')&&!/(^|;)\s*(width|height)\s*:/i.test(getA(t,'style')||'')){setA(t,'width',String(nat.w));setA(t,'height',String(nat.h))}
+        if(!isData){
+          seen++;
+          const tiny=nat&&nat.w<=120&&nat.h<=120;
+          if(seen<=3){
+            if(!hasA(t,'loading'))setA(t,'loading','eager');
+            if(!first&&!tiny){first=t;if(!hasA(t,'fetchpriority'))setA(t,'fetchpriority','high')}
+          }else if(!hasA(t,'loading'))setA(t,'loading','lazy');
+          if(!hasA(t,'decoding'))setA(t,'decoding','async');
+        }
+        if(t===first)first={t,pos};
+        return ser(t);
+      });
+      /* fundo de tela cheia que aparece antes de qualquer <img>: tambem entra antes na fila */
+      let bgPre='';
+      {
+        const links=[];h.replace(/<link\b[^>]*rel=["']?stylesheet[^>]*>/gi,m=>{const mh=/href=["']([^"']+)["']/i.exec(m);if(mh){const r=resolve(p,mh[1]);if(r)links.push(r)}return m});
+        const cand=[];for(const k of links)for(const r of(BGR[k]||[]))cand.push(r);for(let q=0;q<sb;q++)for(const r of(BGR[p+'#s'+q]||[]))cand.push(r);
+        let best=null,bi=1e9;
+        for(const r of cand){const m=/^([.#])([A-Za-z0-9_-]+)$/.exec(r.sel);if(!m)continue;const re=m[1]=='.'?new RegExp('class=["\'][^"\']*\\b'+m[2]+'\\b'):new RegExp('id=["\']'+m[2]+'["\']');const bd=h.search(/<body/i),ix=h.slice(Math.max(bd,0)).search(re);if(ix>=0&&ix<bi){bi=ix;best=r}}
+        const fi=h.slice(Math.max(h.search(/<body/i),0)).search(/<img\b/i);
+        if(best&&(fi<0||bi<fi)){const c=best.c,v9=c.vs.find(v=>v.w>=900&&v!==c.big),v4=c.vs.find(v=>v.w>=400&&v.w<900);
+          const L=(u,md)=>'<link rel="preload" as="image" href="'+u+'" media="'+md+'" fetchpriority="high">';
+          const bp=best.c.big.path;
+          bgPre=(v4?L(toRef(p,'x',v4.path),'(max-width:480px)'):'')+(v9?L(toRef(p,'x',v9.path),v4?'(min-width:481px) and (max-width:900px)':'(max-width:900px)'):'')+L(toRef(p,'x',bp),(v9||v4)?'(min-width:901px)':'all');
+        }
+      }
+      /* preload da primeira imagem grande */
+      let pre='';
+      if(first&&first.t){const t=first.t,sr=getA(t,'srcset'),sz=getA(t,'sizes'),sc=getA(t,'src');if(sc&&!/^data:/i.test(sc))pre='<link rel="preload" as="image" href="'+sc+'"'+(sr?' imagesrcset="'+sr.replace(/"/g,'&quot;')+'"'+(sz?' imagesizes="'+sz.replace(/"/g,'&quot;')+'"':''):'')+' fetchpriority="high">'}
+      /* imagens citadas em style="" e poster */
+      h=h.replace(URLRE,(m,q,r)=>{const a=resolve(p,r),c=a&&conv[a];return c?'url('+q+toRef(p,r.trim(),c.big.path)+q+')':m});
+      h=h.replace(/(\bposter\s*=\s*)("([^"]*)"|'([^']*)')/gi,(m,k,v,d1,d2)=>{const r=d1!==undefined?d1:d2,a=resolve(p,r),c=a&&conv[a];return c?k+'"'+toRef(p,r,c.big.path)+'"':m});
+      /* iframes (menos o primeiro) so carregam quando chegam perto */
+      let ifr=0;h=h.replace(/<iframe\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,tag=>{ifr++;if(ifr==1)return tag;const t=parseTag(tag);if(!t||hasA(t,'loading'))return tag;setA(t,'loading','lazy');return ser(t)});
+      /* css do Google Fonts nao trava mais a pagina */
+      const gf=[];
+      h=h.replace(/<link\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,tag=>{
+        const t=parseTag(tag);if(!t)return tag;const href=getA(t,'href')||'',rel=(getA(t,'rel')||'').toLowerCase();
+        if(rel=='stylesheet'&&/^https:\/\/fonts\.googleapis\.com\//i.test(href)&&!hasA(t,'media')){
+          let u=href;if(!/[?&]display=/.test(u))u+=(u.indexOf('?')>=0?'&':'?')+'display=swap';setA(t,'href',u);setA(t,'media','print');setA(t,'onload',"this.media='all'");
+          gf.push('<noscript><link rel="stylesheet" href="'+u+'"></noscript>');return ser(t)+gf[gf.length-1]}
+        return tag});
+      /* conexoes antecipadas */
+      const hosts=[];const addH=(u,cors)=>{try{const x=new URL(u);if(x.protocol!='https:')return;if(!hosts.some(z=>z[0]==x.origin))hosts.push([x.origin,cors])}catch{}};
+      if(/fonts\.googleapis\.com/i.test(h)){addH('https://fonts.googleapis.com',false);addH('https://fonts.gstatic.com',true)}
+      const ex=/<(?:img|video|source)\b[^>]*\b(?:src|poster)\s*=\s*["'](https:\/\/[^"']+)["']/gi;let em,nn=0;while((em=ex.exec(h))&&nn<2){addH(em[1],false);nn++}
+      let head='';
+      if(hosts.length&&!/rel=["']preconnect["']/i.test(h))head+=hosts.slice(0,4).map(x=>'<link rel="preconnect" href="'+x[0]+'"'+(x[1]?' crossorigin':'')+'>').join('');
+      head+=bgPre+pre;
+      /* editor invisivel: sem edicoes nao precisa carregar o motor de edicao */
+      let strip=false;
+      for(const k in frozen){}
+      h=h.replace(/\u0000(\d+)\u0001/g,(m,i)=>frozen[+i]);
+      const mp=/<script>window\.__SL_OPS=\[\]<\/script><script>\(function\(\)\{if\(window\.__SL_P\)return;[\s\S]*?<\/script>/;
+      if(mp.test(h)){h=h.replace(mp,'');strip=true}
+      /* atrasa rastreadores (so se o usuario ligou) */
+      if(o.trk){
+        const TRK=/connect\.facebook\.net|fbevents|googletagmanager\.com|google-analytics\.com|\bgtag\(|clarity\.ms|hotjar|analytics\.tiktok|snap\.licdn|utmify|static\.ads-twitter|pinimg\.com\/ct/i;let any=false;
+        h=h.replace(/<script\b((?:[^>"']|"[^"]*"|'[^']*')*)>([\s\S]*?)<\/script>/gi,(m,at,body)=>{if(/\btype\s*=\s*["']?(?!text\/javascript|module)[^"'\s>]*/i.test(at)&&!/\btype\s*=\s*["']?text\/javascript/i.test(at))return m;if(!TRK.test(at)&&!TRK.test(body))return m;any=true;return '<script'+at.replace(/\btype\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/i,'')+' type="sl/delay">'+body+'</script>'});
+        if(any)head+='<script>(function(){var d=0;function go(){if(d)return;d=1;var l=document.querySelectorAll(\'script[type="sl/delay"]\');for(var i=0;i<l.length;i++){var o=l[i],n=document.createElement("script");for(var j=0;j<o.attributes.length;j++){var a=o.attributes[j];if(a.name!="type")n.setAttribute(a.name,a.value)}n.text=o.text;o.parentNode.replaceChild(n,o)}}["scroll","mousemove","touchstart","click","keydown"].forEach(function(e){addEventListener(e,go,{once:true,passive:true})});addEventListener("load",function(){setTimeout(go,12000)})})()<\/script>';
+      }
+      if(head){
+        /* depois do <meta charset> (precisa ficar nos 1024 primeiros bytes) e do <meta viewport> (o navegador so conhece a largura da tela depois dele) */
+        const hd=/<head[^>]*>/i.exec(h),hi=hd?hd.index+hd[0].length:0,hend=(()=>{const e=h.search(/<\/head>/i);return e<0?h.length:e})();
+        let at=hi;
+        const mc=/<meta\b[^>]*charset[^>]*>/i.exec(h),mv=/<meta\b[^>]*name\s*=\s*["']?viewport[^>]*>/i.exec(h);
+        if(mc&&mc.index>=hi&&mc.index<hend)at=Math.max(at,mc.index+mc[0].length);
+        if(mv&&mv.index>=hi&&mv.index<hend)at=Math.max(at,mv.index+mv[0].length);
+        h=h.slice(0,at)+head+h.slice(at)}
+      if(changed.size)h=h.replace(/<(?:script|link)\b(?:[^>"']|"[^"]*"|'[^']*')*>/gi,tag=>{if(!/\bintegrity\s*=/i.test(tag))return tag;const t=parseTag(tag);if(!t)return tag;const u=getA(t,'src')||getA(t,'href'),r=u&&resolve(p,u);if(!r||!changed.has(r))return tag;t.a=t.a.filter(x=>x[0].toLowerCase()!='integrity');return ser(t)});
+      if(h!==o0){F[p]=te.encode(h);T[p]=h;rep.files++}
+    }
+    /* 5) compressao e cache (Hostinger / Apache / LiteSpeed) */
+    const ha=(base||'')+'/.htaccess';
+    if(o.htaccess!==false&&F[ha]){
+      const cur=td.decode(F[ha]);
+      if(!/Shark Lab: velocidade/.test(cur))F[ha]=te.encode(cur+'\n# Shark Lab: velocidade\n<IfModule mod_deflate.c>\nAddOutputFilterByType DEFLATE text/html text/plain text/css text/javascript application/javascript application/x-javascript application/json application/xml image/svg+xml font/ttf font/otf application/vnd.ms-fontobject\n</IfModule>\n<IfModule mod_brotli.c>\nAddOutputFilterByType BROTLI_COMPRESS text/html text/plain text/css text/javascript application/javascript application/json application/xml image/svg+xml\n</IfModule>\n<IfModule mod_headers.c>\n<FilesMatch "\\.(woff2?|ttf|otf|eot)$">\nHeader set Cache-Control "public, max-age=2592000"\n</FilesMatch>\n<FilesMatch "\\.(webp|avif|jpe?g|png|gif|svg|ico)$">\nHeader set Cache-Control "public, max-age=604800"\n</FilesMatch>\n<FilesMatch "\\.(js|css)$">\nHeader set Cache-Control "public, max-age=14400"\n</FilesMatch>\n<FilesMatch "[-.][A-Za-z0-9_-]{8,}\\.(js|css|woff2?|webp|avif|jpe?g|png|svg)$">\nHeader set Cache-Control "public, max-age=31536000, immutable"\n</FilesMatch>\n</IfModule>\n')}
+    return rep;
+  }
+  return{apply,dims,_parseTag:parseTag};
+}
+/* codigo que roda numa pagina "de trabalho" (computador: janela escondida; celular: a propria tela) para gerar WebP */
+async function speedCanvasEnc(b64,mime,maxW,q){
+  const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+  const bmp=await createImageBitmap(new Blob([u],{type:mime}));let w=bmp.width,h=bmp.height;const s=Math.min(1,maxW/w);w=Math.max(1,Math.round(w*s));h=Math.max(1,Math.round(h*s));
+  const c=new OffscreenCanvas(w,h),g=c.getContext('2d');g.imageSmoothingQuality='high';g.drawImage(bmp,0,0,w,h);bmp.close&&bmp.close();
+  const o=await c.convertToBlob({type:'image/webp',quality:q}),ab=new Uint8Array(await o.arrayBuffer());let s2='';const k=0x8000;for(let i=0;i<ab.length;i+=k)s2+=String.fromCharCode.apply(null,ab.subarray(i,i+k));
+  return{w,h,b64:btoa(s2)};
+}
+
+
+const SPCACHE=()=>path.join(app.getPath('userData'),'speedcache');
+async function speedRun(F,o){
+  let w=null;const G=Object.assign({},F);
+  try{
+    w=new BrowserWindow({show:false,width:400,height:300,webPreferences:{backgroundThrottling:false,partition:'spd'+Date.now()}});
+    await w.loadURL('about:blank');await w.webContents.executeJavaScript('window.__f='+speedCanvasEnc.toString().replace(/^async function speedCanvasEnc/,'async function')+';1');
+    try{fs.mkdirSync(SPCACHE(),{recursive:true})}catch{}
+    const E={sha1:async u=>crypto.createHash('sha1').update(u).digest('hex'),
+      enc:async(u,mime,wd,q)=>{const r=await w.webContents.executeJavaScript('window.__f('+JSON.stringify(Buffer.from(u).toString('base64'))+','+JSON.stringify(mime)+','+(+wd)+','+(+q)+')');if(!r||!r.b64)return null;return{u8:new Uint8Array(Buffer.from(r.b64,'base64')),w:r.w,h:r.h}},
+      cacheGet:async k=>{try{return new Uint8Array(fs.readFileSync(path.join(SPCACHE(),k.replace(/[^\w-]/g,'_')+'.webp')))}catch{return null}},
+      cachePut:async(k,v)=>{try{fs.writeFileSync(path.join(SPCACHE(),k.replace(/[^\w-]/g,'_')+'.webp'),Buffer.from(v))}catch{}}};
+    const rep=await makeSpeed(E).apply(G,o);
+    for(const p in G)F[p]=Buffer.isBuffer(G[p])?G[p]:Buffer.from(G[p]);
+    return rep;
+  }catch(e){return{imgs:0,from:0,to:0,files:0,notes:['falhou: '+String(e&&e.message||e).slice(0,120)],failed:1}}
+  finally{try{w&&!w.isDestroyed()&&w.destroy()}catch{}}
+}
 
 // ===== Sincronização (v46) =====
 const HUBPHP=Buffer.from('PD9waHAKLy8gU2hhcmsgTGFiIC0gcG9udG8gZGUgZW5jb250cm8gZGEgc2luY3Jvbml6YWNhbyBlbnRyZSBjb21wdXRhZG9yIGUgY2VsdWxhci4KLy8gTmFvIGFwYWd1ZSBhIHBhc3RhIGRlIGRhZG9zIChkXy4uLik6IGVsYSBndWFyZGEgYXMgcGFnaW5hcyBzaW5jcm9uaXphZGFzLgplcnJvcl9yZXBvcnRpbmcoMCk7CmhlYWRlcignQ2FjaGUtQ29udHJvbDogbm8tc3RvcmUnKTsKJEQgPSBfX0RJUl9fOwokY2ZnID0gQGluY2x1ZGUgJEQgLiAnL2NvbmZpZy5waHAnOwpmdW5jdGlvbiBvdXQoJGMsICRhKSB7IGh0dHBfcmVzcG9uc2VfY29kZSgkYyk7IGhlYWRlcignQ29udGVudC1UeXBlOiBhcHBsaWNhdGlvbi9qc29uOyBjaGFyc2V0PXV0Zi04Jyk7IGVjaG8ganNvbl9lbmNvZGUoJGEsIEpTT05fVU5FU0NBUEVEX1VOSUNPREUgfCBKU09OX1VORVNDQVBFRF9TTEFTSEVTKTsgZXhpdDsgfQppZiAoIWlzX2FycmF5KCRjZmcpIHx8IGVtcHR5KCRjZmdbJ2toJ10pKSBvdXQoNTAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdjb25maWcnXSk7CiRrID0gaXNzZXQoJF9TRVJWRVJbJ0hUVFBfWF9TTF9LRVknXSkgPyAkX1NFUlZFUlsnSFRUUF9YX1NMX0tFWSddIDogKGlzc2V0KCRfR0VUWydrJ10pID8gJF9HRVRbJ2snXSA6ICcnKTsKaWYgKCFpc19zdHJpbmcoJGspIHx8ICFoYXNoX2VxdWFscygkY2ZnWydraCddLCBoYXNoKCdzaGEyNTYnLCAkaykpKSB7IHVzbGVlcCg4MDAwMDApOyBvdXQoNDAxLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdjaGF2ZSddKTsgfQokREFUQSA9ICREIC4gJy8nIC4gKChpc3NldCgkY2ZnWydkaXInXSkgJiYgcHJlZ19tYXRjaCgnL15kX1thLWYwLTldezEyfSQvJywgJGNmZ1snZGlyJ10pKSA/ICRjZmdbJ2RpciddIDogJ2RhdGEnKTsKaWYgKCFpc19kaXIoJERBVEEpKSB7IEBta2RpcigkREFUQSwgMDc1NSwgdHJ1ZSk7IH0KaWYgKCFpc19maWxlKCREQVRBIC4gJy8uaHRhY2Nlc3MnKSkgeyBAZmlsZV9wdXRfY29udGVudHMoJERBVEEgLiAnLy5odGFjY2VzcycsICJSZXF1aXJlIGFsbCBkZW5pZWRcbkRlbnkgZnJvbSBhbGxcbiIpOyBAZmlsZV9wdXRfY29udGVudHMoJERBVEEgLiAnL2luZGV4Lmh0bWwnLCAnJyk7IH0KQG1rZGlyKCREQVRBIC4gJy90bXAnLCAwNzU1LCB0cnVlKTsgQG1rZGlyKCREQVRBIC4gJy9iJywgMDc1NSwgdHJ1ZSk7IEBta2RpcigkREFUQSAuICcvcCcsIDA3NTUsIHRydWUpOwpmdW5jdGlvbiBva2lkKCRzKSB7IHJldHVybiBpc19zdHJpbmcoJHMpICYmIHByZWdfbWF0Y2goJy9eW0EtWmEtejAtOV8tXXsxLDY0fSQvJywgJHMpOyB9CmZ1bmN0aW9uIG9raCgkcykgeyByZXR1cm4gaXNfc3RyaW5nKCRzKSAmJiBwcmVnX21hdGNoKCcvXlthLWYwLTldezQwfSQvJywgJHMpOyB9CmZ1bmN0aW9uIGJsb2IoJGgpIHsgZ2xvYmFsICREQVRBOyByZXR1cm4gJERBVEEgLiAnL2IvJyAuIHN1YnN0cigkaCwgMCwgMikgLiAnLycgLiAkaDsgfQpmdW5jdGlvbiBib2R5X2pzb24oKSB7ICRqID0ganNvbl9kZWNvZGUoZmlsZV9nZXRfY29udGVudHMoJ3BocDovL2lucHV0JyksIHRydWUpOyByZXR1cm4gaXNfYXJyYXkoJGopID8gJGogOiBbXTsgfQpmdW5jdGlvbiBpbmlfYnl0ZXMoJHYpIHsgJHYgPSB0cmltKChzdHJpbmcpJHYpOyAkbiA9IChmbG9hdCkkdjsgJHUgPSBzdHJ0b2xvd2VyKHN1YnN0cigkdiwgLTEpKTsgaWYgKCR1ID09ICdnJykgJG4gKj0gMTA3Mzc0MTgyNDsgZWxzZWlmICgkdSA9PSAnbScpICRuICo9IDEwNDg1NzY7IGVsc2VpZiAoJHUgPT0gJ2snKSAkbiAqPSAxMDI0OyByZXR1cm4gKGludCkkbjsgfQpmdW5jdGlvbiBpbmRleF9vcGVuKCkgeyBnbG9iYWwgJERBVEE7ICRmcCA9IGZvcGVuKCREQVRBIC4gJy9pbmRleC5qc29uJywgJ2MrJyk7IGZsb2NrKCRmcCwgTE9DS19FWCk7ICR0ID0gc3RyZWFtX2dldF9jb250ZW50cygkZnApOyAkaiA9IGpzb25fZGVjb2RlKCR0LCB0cnVlKTsgaWYgKCFpc19hcnJheSgkaikgfHwgIWlzc2V0KCRqWydwYWdlcyddKSkgJGogPSBbJ3JldicgPT4gMCwgJ3BhZ2VzJyA9PiBbXV07IHJldHVybiBbJGZwLCAkal07IH0KZnVuY3Rpb24gaW5kZXhfc2F2ZSgkZnAsICRqKSB7IGZ0cnVuY2F0ZSgkZnAsIDApOyByZXdpbmQoJGZwKTsgZndyaXRlKCRmcCwganNvbl9lbmNvZGUoJGosIEpTT05fVU5FU0NBUEVEX1VOSUNPREUpKTsgZmZsdXNoKCRmcCk7IGZsb2NrKCRmcCwgTE9DS19VTik7IGZjbG9zZSgkZnApOyB9CmZ1bmN0aW9uIGluZGV4X2Nsb3NlKCRmcCkgeyBmbG9jaygkZnAsIExPQ0tfVU4pOyBmY2xvc2UoJGZwKTsgfQoKZnVuY3Rpb24gaG9tZV9kaXIoKSB7ICRkID0gc3RyX3JlcGxhY2UoJ1xcJywgJy8nLCBfX0RJUl9fKTsgaWYgKCgkcCA9IHN0cnBvcygkZCwgJy9kb21haW5zLycpKSAhPT0gZmFsc2UpIHJldHVybiBzdWJzdHIoJGQsIDAsICRwKTsgaWYgKCgkcCA9IHN0cnBvcygkZCwgJy9wdWJsaWNfaHRtbCcpKSAhPT0gZmFsc2UpIHJldHVybiBzdWJzdHIoJGQsIDAsICRwKTsgcmV0dXJuIG51bGw7IH0KZnVuY3Rpb24gb2tkaXIoJGQpIHsgcmV0dXJuIGlzX3N0cmluZygkZCkgJiYgcHJlZ19tYXRjaCgnI14vKGRvbWFpbnMvW0EtWmEtejAtOS4tXSsvKT9wdWJsaWNfaHRtbCQjJywgJGQpICYmIHN0cnBvcygkZCwgJy4uJykgPT09IGZhbHNlOyB9CmZ1bmN0aW9uIGRvY3Jvb3QoJGQpIHsgJGggPSBob21lX2RpcigpOyByZXR1cm4gJGggPT09IG51bGwgPyBudWxsIDogJGggLiAkZDsgfQokYSA9IGlzc2V0KCRfR0VUWydhJ10pID8gJF9HRVRbJ2EnXSA6ICcnOwoKaWYgKCRhID09ICdwaW5nJykgewogIG91dCgyMDAsIFsnb2snID0+IDEsICd2JyA9PiAzLCAncHViJyA9PiAoaG9tZV9kaXIoKSAhPT0gbnVsbCkgPyAxIDogMCwgJ3QnID0+IHJvdW5kKG1pY3JvdGltZSh0cnVlKSAqIDEwMDApLCAncG9zdCcgPT4gaW5pX2J5dGVzKGluaV9nZXQoJ3Bvc3RfbWF4X3NpemUnKSksICdmcmVlJyA9PiBAZGlza19mcmVlX3NwYWNlKCREQVRBKV0pOwp9CmlmICgkYSA9PSAnaW5kZXgnKSB7CiAgJHQgPSBAZmlsZV9nZXRfY29udGVudHMoJERBVEEgLiAnL2luZGV4Lmpzb24nKTsgJGogPSBqc29uX2RlY29kZSgkdCwgdHJ1ZSk7CiAgaWYgKCFpc19hcnJheSgkaikgfHwgIWlzc2V0KCRqWydwYWdlcyddKSkgJGogPSBbJ3JldicgPT4gMCwgJ3BhZ2VzJyA9PiBbXV07CiAgb3V0KDIwMCwgWydvaycgPT4gMSwgJ3JldicgPT4gJGpbJ3JldiddLCAncGFnZXMnID0+IChvYmplY3QpJGpbJ3BhZ2VzJ11dKTsKfQppZiAoJGEgPT0gJ25lZWQnKSB7CiAgJGIgPSBib2R5X2pzb24oKTsgJG5lZWQgPSBbXTsKICBmb3JlYWNoICgoaXNzZXQoJGJbJ2hhc2hlcyddKSAmJiBpc19hcnJheSgkYlsnaGFzaGVzJ10pID8gJGJbJ2hhc2hlcyddIDogW10pIGFzICRoKSB7IGlmIChva2goJGgpICYmICFpc19maWxlKGJsb2IoJGgpKSkgJG5lZWRbJGhdID0gMTsgfQogIG91dCgyMDAsIFsnb2snID0+IDEsICduZWVkJyA9PiBhcnJheV9rZXlzKCRuZWVkKV0pOwp9CmlmICgkYSA9PSAncHV0JykgewogICRoID0gaXNzZXQoJF9HRVRbJ2gnXSkgPyAkX0dFVFsnaCddIDogJyc7ICRvZmYgPSAoaW50KShpc3NldCgkX0dFVFsnb2ZmJ10pID8gJF9HRVRbJ29mZiddIDogMCk7ICR0b3QgPSAoaW50KShpc3NldCgkX0dFVFsndG90YWwnXSkgPyAkX0dFVFsndG90YWwnXSA6IDApOwogIGlmICghb2toKCRoKSB8fCAkb2ZmIDwgMCB8fCAkdG90IDwgMCkgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAncGFyYW1ldHJvcyddKTsKICBpZiAoaXNfZmlsZShibG9iKCRoKSkpIHsgb3V0KDIwMCwgWydvaycgPT4gMSwgJ2RvbmUnID0+IDFdKTsgfQogICRwYXJ0ID0gJERBVEEgLiAnL3RtcC8nIC4gJGggLiAnLnBhcnQnOwogIGlmICgkb2ZmID09PSAwKSB7IEB1bmxpbmsoJHBhcnQpOyB9CiAgY2xlYXJzdGF0Y2FjaGUoKTsgJGN1ciA9IGlzX2ZpbGUoJHBhcnQpID8gZmlsZXNpemUoJHBhcnQpIDogMDsKICBpZiAoJGN1ciAhPT0gJG9mZikgb3V0KDQwOSwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnb2Zmc2V0JywgJ2hhdmUnID0+ICRjdXJdKTsKICAkZnAgPSBmb3BlbigkcGFydCwgJ2FiJyk7IGlmIChpc3NldCgkX0dFVFsnZW5jJ10pICYmICRfR0VUWydlbmMnXSA9PSAnYjY0JykgeyBmd3JpdGUoJGZwLCAoc3RyaW5nKWJhc2U2NF9kZWNvZGUoKHN0cmluZylmaWxlX2dldF9jb250ZW50cygncGhwOi8vaW5wdXQnKSkpOyB9IGVsc2UgeyAkaW4gPSBmb3BlbigncGhwOi8vaW5wdXQnLCAncmInKTsgc3RyZWFtX2NvcHlfdG9fc3RyZWFtKCRpbiwgJGZwKTsgZmNsb3NlKCRpbik7IH0gZmNsb3NlKCRmcCk7CiAgY2xlYXJzdGF0Y2FjaGUoKTsgJHN6ID0gaXNfZmlsZSgkcGFydCkgPyBmaWxlc2l6ZSgkcGFydCkgOiAwOwogIGlmICgkc3ogPiAkdG90KSB7IEB1bmxpbmsoJHBhcnQpOyBvdXQoNDIyLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICd0YW1hbmhvJ10pOyB9CiAgaWYgKCRzeiA9PSAkdG90KSB7CiAgICBpZiAoc2hhMV9maWxlKCRwYXJ0KSAhPT0gJGgpIHsgQHVubGluaygkcGFydCk7IG91dCg0MjIsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ2hhc2gnXSk7IH0KICAgICRkc3QgPSBibG9iKCRoKTsgQG1rZGlyKGRpcm5hbWUoJGRzdCksIDA3NTUsIHRydWUpOwogICAgaWYgKCFAcmVuYW1lKCRwYXJ0LCAkZHN0KSkgeyBAY29weSgkcGFydCwgJGRzdCk7IEB1bmxpbmsoJHBhcnQpOyB9CiAgICBvdXQoMjAwLCBbJ29rJyA9PiAxLCAnZG9uZScgPT4gMV0pOwogIH0KICBvdXQoMjAwLCBbJ29rJyA9PiAxLCAnaGF2ZScgPT4gJHN6XSk7Cn0KaWYgKCRhID09ICdnZXQnKSB7CiAgJGggPSBpc3NldCgkX0dFVFsnaCddKSA/ICRfR0VUWydoJ10gOiAnJzsgaWYgKCFva2goJGgpIHx8ICFpc19maWxlKGJsb2IoJGgpKSkgb3V0KDQwNCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnbmFvIGV4aXN0ZSddKTsKICAkb2ZmID0gKGludCkoaXNzZXQoJF9HRVRbJ29mZiddKSA/ICRfR0VUWydvZmYnXSA6IDApOyAkbGVuID0gKGludCkoaXNzZXQoJF9HRVRbJ2xlbiddKSA/ICRfR0VUWydsZW4nXSA6IDApOyAkZiA9IGJsb2IoJGgpOyAkc2l6ZSA9IGZpbGVzaXplKCRmKTsKICBpZiAoJGxlbiA8PSAwIHx8ICRvZmYgKyAkbGVuID4gJHNpemUpICRsZW4gPSBtYXgoMCwgJHNpemUgLSAkb2ZmKTsKICBoZWFkZXIoJ0NvbnRlbnQtVHlwZTogYXBwbGljYXRpb24vb2N0ZXQtc3RyZWFtJyk7IGhlYWRlcignQ29udGVudC1MZW5ndGg6ICcgLiAkbGVuKTsgaGVhZGVyKCdYLVNMLVNpemU6ICcgLiAkc2l6ZSk7CiAgJGZwID0gZm9wZW4oJGYsICdyYicpOyBmc2VlaygkZnAsICRvZmYpOyAkbGVmdCA9ICRsZW47IHdoaWxlICgkbGVmdCA+IDAgJiYgIWZlb2YoJGZwKSkgeyAkciA9IGZyZWFkKCRmcCwgbWluKDY1NTM2LCAkbGVmdCkpOyBpZiAoJHIgPT09IGZhbHNlIHx8ICRyID09PSAnJykgYnJlYWs7IGVjaG8gJHI7ICRsZWZ0IC09IHN0cmxlbigkcik7IH0gZmNsb3NlKCRmcCk7IGV4aXQ7Cn0KaWYgKCRhID09ICdtZXRhJyB8fCAkYSA9PSAnZmlsZXMnKSB7CiAgJGlkID0gaXNzZXQoJF9HRVRbJ2lkJ10pID8gJF9HRVRbJ2lkJ10gOiAnJzsgaWYgKCFva2lkKCRpZCkpIG91dCg0MDAsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ2lkJ10pOwogICRmID0gJERBVEEgLiAnL3AvJyAuICRpZCAuICcvJyAuICgkYSA9PSAnbWV0YScgPyAnbWV0YS5qc29uJyA6ICdmaWxlcy5qc29uJyk7IGlmICghaXNfZmlsZSgkZikpIG91dCg0MDQsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ25hbyBleGlzdGUnXSk7CiAgaGVhZGVyKCdDb250ZW50LVR5cGU6IGFwcGxpY2F0aW9uL2pzb247IGNoYXJzZXQ9dXRmLTgnKTsgcmVhZGZpbGUoJGYpOyBleGl0Owp9CmlmICgkYSA9PSAnY29tbWl0JyB8fCAkYSA9PSAnZGVsJykgewogICRiID0gYm9keV9qc29uKCk7ICRpZCA9IGlzc2V0KCRiWydpZCddKSA/ICRiWydpZCddIDogJyc7IGlmICghb2tpZCgkaWQpKSBvdXQoNDAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdpZCddKTsKICAkaWZtID0gaXNzZXQoJGJbJ2lmbSddKSA/IChzdHJpbmcpJGJbJ2lmbSddIDogJyc7ICRpZmYgPSBpc3NldCgkYlsnaWZmJ10pID8gKHN0cmluZykkYlsnaWZmJ10gOiAnJzsKICBpZiAoJGEgPT0gJ2NvbW1pdCcpIHsKICAgICRtID0gaXNzZXQoJGJbJ20nXSkgPyAkYlsnbSddIDogJyc7ICRmID0gaXNzZXQoJGJbJ2YnXSkgPyAkYlsnZiddIDogJyc7ICRmaWxlcyA9IGlzc2V0KCRiWydmaWxlcyddKSAmJiBpc19hcnJheSgkYlsnZmlsZXMnXSkgPyAkYlsnZmlsZXMnXSA6IG51bGw7ICRtZXRhID0gaXNzZXQoJGJbJ21ldGEnXSkgPyAkYlsnbWV0YSddIDogbnVsbDsKICAgIGlmICghb2toKCRtKSB8fCAhb2toKCRmKSB8fCAkZmlsZXMgPT09IG51bGwgfHwgIWlzX2FycmF5KCRtZXRhKSkgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnY29ycG8nXSk7CiAgICAkbWlzcyA9IFtdOyBmb3JlYWNoICgkZmlsZXMgYXMgJHAgPT4gJGUpIHsgaWYgKCFpc19hcnJheSgkZSkgfHwgIWlzc2V0KCRlWzFdKSB8fCAhb2toKCRlWzFdKSkgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnYXJxdWl2byddKTsgaWYgKCFpc19maWxlKGJsb2IoJGVbMV0pKSkgJG1pc3NbXSA9ICRlWzFdOyB9CiAgICBpZiAoJG1pc3MpIG91dCg0MjIsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ2ZhbHRhbScsICdtaXNzaW5nJyA9PiBhcnJheV92YWx1ZXMoYXJyYXlfdW5pcXVlKCRtaXNzKSldKTsKICB9CiAgbGlzdCgkZnAsICRqKSA9IGluZGV4X29wZW4oKTsKICAkY3VyID0gaXNzZXQoJGpbJ3BhZ2VzJ11bJGlkXSkgJiYgZW1wdHkoJGpbJ3BhZ2VzJ11bJGlkXVsnZGVsJ10pID8gJGpbJ3BhZ2VzJ11bJGlkXSA6IG51bGw7CiAgJGhhdmUgPSAkY3VyID8gKCRjdXJbJ20nXSAuICd8JyAuICRjdXJbJ2YnXSkgOiAnfCc7CiAgaWYgKCRoYXZlICE9PSAoJGlmbSAuICd8JyAuICRpZmYpKSB7IGluZGV4X2Nsb3NlKCRmcCk7IG91dCg0MDksIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ211ZG91JywgJ2N1cicgPT4gaXNzZXQoJGpbJ3BhZ2VzJ11bJGlkXSkgPyAkalsncGFnZXMnXVskaWRdIDogbnVsbF0pOyB9CiAgJHBkID0gJERBVEEgLiAnL3AvJyAuICRpZDsgQG1rZGlyKCRwZCwgMDc1NSwgdHJ1ZSk7CiAgaWYgKCRhID09ICdjb21taXQnKSB7CiAgICBmaWxlX3B1dF9jb250ZW50cygkcGQgLiAnL21ldGEuanNvbicsIGpzb25fZW5jb2RlKCRtZXRhLCBKU09OX1VORVNDQVBFRF9VTklDT0RFKSk7IGZpbGVfcHV0X2NvbnRlbnRzKCRwZCAuICcvZmlsZXMuanNvbicsIGpzb25fZW5jb2RlKChvYmplY3QpJGZpbGVzLCBKU09OX1VORVNDQVBFRF9VTklDT0RFKSk7CiAgICAkalsncGFnZXMnXVskaWRdID0gWydtJyA9PiAkbSwgJ2YnID0+ICRmLCAnYXQnID0+IHJvdW5kKG1pY3JvdGltZSh0cnVlKSAqIDEwMDApLCAnZGVsJyA9PiAwXTsKICB9IGVsc2UgewogICAgJGpbJ3BhZ2VzJ11bJGlkXSA9IFsnbScgPT4gJycsICdmJyA9PiAnJywgJ2F0JyA9PiByb3VuZChtaWNyb3RpbWUodHJ1ZSkgKiAxMDAwKSwgJ2RlbCcgPT4gMV07CiAgfQogICRqWydyZXYnXSA9IChpbnQpJGpbJ3JldiddICsgMTsgJGUgPSAkalsncGFnZXMnXVskaWRdOyAkcmV2ID0gJGpbJ3JldiddOyBpbmRleF9zYXZlKCRmcCwgJGopOwogIG91dCgyMDAsIFsnb2snID0+IDEsICdyZXYnID0+ICRyZXYsICdlbnRyeScgPT4gJGVdKTsKfQoKaWYgKCRhID09ICdzZXR0aW5ncycpIHsKICAkZiA9ICREQVRBIC4gJy9zZXR0aW5ncy5qc29uJzsKICBpZiAoJF9TRVJWRVJbJ1JFUVVFU1RfTUVUSE9EJ10gPT0gJ1BPU1QnKSB7CiAgICAkYiA9IGJvZHlfanNvbigpOyBpZiAoIWlzc2V0KCRiWydkYXRhJ10pIHx8ICFpc19hcnJheSgkYlsnZGF0YSddKSkgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnY29ycG8nXSk7CiAgICAkb2xkID0ganNvbl9kZWNvZGUoQGZpbGVfZ2V0X2NvbnRlbnRzKCRmKSwgdHJ1ZSk7ICRyZXYgPSBpc19hcnJheSgkb2xkKSAmJiBpc3NldCgkb2xkWydyZXYnXSkgPyAoaW50KSRvbGRbJ3JldiddICsgMSA6IDE7CiAgICBmaWxlX3B1dF9jb250ZW50cygkZiwganNvbl9lbmNvZGUoWydyZXYnID0+ICRyZXYsICdkYXRhJyA9PiAkYlsnZGF0YSddXSwgSlNPTl9VTkVTQ0FQRURfVU5JQ09ERSkpOyBvdXQoMjAwLCBbJ29rJyA9PiAxLCAncmV2JyA9PiAkcmV2XSk7CiAgfQogICRqID0ganNvbl9kZWNvZGUoQGZpbGVfZ2V0X2NvbnRlbnRzKCRmKSwgdHJ1ZSk7IGlmICghaXNfYXJyYXkoJGopKSAkaiA9IFsncmV2JyA9PiAwLCAnZGF0YScgPT4gKG9iamVjdClbXV07CiAgb3V0KDIwMCwgWydvaycgPT4gMSwgJ3JldicgPT4gJGpbJ3JldiddLCAnZGF0YScgPT4gJGpbJ2RhdGEnXV0pOwp9CmlmICgkYSA9PSAnY2hlY2snKSB7CiAgJGIgPSBib2R5X2pzb24oKTsgJGRpciA9IGlzc2V0KCRiWydkaXInXSkgPyAkYlsnZGlyJ10gOiAnJzsgaWYgKCFva2RpcigkZGlyKSkgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAncGFzdGEnXSk7CiAgJHIgPSBkb2Nyb290KCRkaXIpOyBvdXQoMjAwLCBbJ29rJyA9PiAxLCAnZXhpc3RzJyA9PiAoJHIgIT09IG51bGwgJiYgaXNfZGlyKCRyKSldKTsKfQppZiAoJGEgPT0gJ3B1Ymxpc2gnKSB7CiAgQHNldF90aW1lX2xpbWl0KDE4MCk7CiAgJGIgPSBib2R5X2pzb24oKTsgJGRpciA9IGlzc2V0KCRiWydkaXInXSkgPyAkYlsnZGlyJ10gOiAnJzsgJHNsdWcgPSB0cmltKChzdHJpbmcpKGlzc2V0KCRiWydzbHVnJ10pID8gJGJbJ3NsdWcnXSA6ICcnKSwgJy8nKTsgJGZpbGVzID0gaXNzZXQoJGJbJ2ZpbGVzJ10pICYmIGlzX2FycmF5KCRiWydmaWxlcyddKSA/ICRiWydmaWxlcyddIDogbnVsbDsKICAkdG9rID0gaXNzZXQoJGJbJ3RvayddKSA/ICRiWyd0b2snXSA6ICcnOyAkb3duZXIgPSBpc3NldCgkYlsnb3duZXInXSkgJiYgaXNfYXJyYXkoJGJbJ293bmVyJ10pID8gJGJbJ293bmVyJ10gOiBbXTsgJGZvcmNlID0gIWVtcHR5KCRiWydmb3JjZSddKTsgJG1rID0gIWVtcHR5KCRiWydtayddKTsKICBpZiAoIW9rZGlyKCRkaXIpIHx8ICgkc2x1ZyAhPT0gJycgJiYgIXByZWdfbWF0Y2goJyNeW0EtWmEtejAtOV8tXSsoL1tBLVphLXowLTlfLV0rKXswLDN9JCMnLCAkc2x1ZykpIHx8ICFpc19zdHJpbmcoJHRvaykgfHwgIXByZWdfbWF0Y2goJy9eW2EtZjAtOV17MTZ9JC8nLCAkdG9rKSB8fCAhJGZpbGVzIHx8IGNvdW50KCRmaWxlcykgPiA4MDAwKSBvdXQoNDAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdjb3JwbyddKTsKICAkcm9vdCA9IGRvY3Jvb3QoJGRpcik7IGlmICgkcm9vdCA9PT0gbnVsbCkgb3V0KDIwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnTyBwb250byBkZSBlbmNvbnRybyBuw6NvIGVzdMOhIGRlbnRybyBkYSBwYXN0YSBkbyBzaXRlLiBSZWluc3RhbGUgYSBzaW5jcm9uaXphw6fDo28uJ10pOwogIGlmICghaXNfZGlyKCRyb290KSkgeyBpZiAoISRtaykgb3V0KDIwMCwgWydvaycgPT4gMCwgJ25vRGlyJyA9PiAkZGlyXSk7IGlmICghQG1rZGlyKCRyb290LCAwNzU1LCB0cnVlKSkgb3V0KDIwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnTsOjbyBjb25zZWd1aSBjcmlhciBhIHBhc3RhIGRvIGRvbcOtbmlvIG5vIHNlcnZpZG9yLiddKTsgfQogICRyb290ID0gcnRyaW0oc3RyX3JlcGxhY2UoJ1xcJywgJy8nLCByZWFscGF0aCgkcm9vdCkpLCAnLycpOwogICRtZGlyID0gJHJvb3QgLiAoJHNsdWcgIT09ICcnID8gJy8nIC4gJHNsdWcgOiAnJyk7CiAgJHByZXYgPSBpc19maWxlKCRtZGlyIC4gJy9fc2xfcHViLmpzb24nKSA/IGpzb25fZGVjb2RlKEBmaWxlX2dldF9jb250ZW50cygkbWRpciAuICcvX3NsX3B1Yi5qc29uJyksIHRydWUpIDogbnVsbDsKICAkb2lkID0gaXNzZXQoJG93bmVyWydpZCddKSA/IChzdHJpbmcpJG93bmVyWydpZCddIDogJyc7ICRvbm0gPSBpc3NldCgkb3duZXJbJ25hbWUnXSkgPyAoc3RyaW5nKSRvd25lclsnbmFtZSddIDogJyc7CiAgaWYgKCEkZm9yY2UgJiYgaXNfYXJyYXkoJHByZXYpICYmICFlbXB0eSgkcHJldlsnb3duZXInXSkgJiYgJG9pZCAhPT0gJycgJiYgJHByZXZbJ293bmVyJ10gIT09ICRvaWQpIG91dCgyMDAsIFsnb2snID0+IDAsICdjb25mbGljdCcgPT4gWyduYW1lJyA9PiBpc3NldCgkcHJldlsnbmFtZSddKSAmJiAkcHJldlsnbmFtZSddICE9PSAnJyA/ICRwcmV2WyduYW1lJ10gOiAnb3V0cm8gcHJvamV0bycsICdhdCcgPT4gaXNzZXQoJHByZXZbJ2F0J10pID8gJHByZXZbJ2F0J10gOiAwXV0pOwogICRtaXNzID0gW107CiAgZm9yZWFjaCAoJGZpbGVzIGFzICRwID0+ICRlKSB7CiAgICBpZiAoIWlzX3N0cmluZygkcCkgfHwgJHBbMF0gIT09ICcvJyB8fCBzdHJsZW4oJHApID4gNDAwIHx8IHByZWdfbWF0Y2goJy9bXHgwMC1ceDFmXFxcXF0vJywgJHApKSBvdXQoNDAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdjYW1pbmhvIGludsOhbGlkbzogJyAuICRwXSk7CiAgICBmb3JlYWNoIChleHBsb2RlKCcvJywgc3Vic3RyKCRwLCAxKSkgYXMgJHNnKSB7IGlmICgkc2cgPT09ICcnIHx8ICRzZyA9PT0gJy4nIHx8ICRzZyA9PT0gJy4uJykgb3V0KDQwMCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnY2FtaW5obyBpbnbDoWxpZG86ICcgLiAkcF0pOyB9CiAgICBpZiAocHJlZ19tYXRjaCgnL1wuKHBocFswLTldP3xwaHRtbHxwaGFyfHBodHxwaHBzKSQvaScsICRwKSB8fCBwcmVnX21hdGNoKCcjLyhcLnVzZXJcLmluaXxwaHBcLmluaSkkI2knLCAkcCkgfHwgc3RycG9zKCRwLCAnL19zbF8nKSA9PT0gMCAmJiAkcCAhPT0gJy9fc2xfcHViLmpzb24nKSBvdXQoMjAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdBcnF1aXZvIG7Do28gcGVybWl0aWRvIG5hIHB1YmxpY2HDp8OjbzogJyAuICRwXSk7CiAgICBpZiAoIWlzX2FycmF5KCRlKSB8fCAhaXNzZXQoJGVbMF0pIHx8ICFpc3NldCgkZVsxXSkgfHwgIW9raCgkZVsxXSkpIG91dCg0MDAsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ2FycXVpdm8nXSk7CiAgICBpZiAoIWlzX2ZpbGUoYmxvYigkZVsxXSkpKSAkbWlzc1tdID0gJGVbMV07CiAgfQogIGlmICgkbWlzcykgb3V0KDQyMiwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnZmFsdGFtJywgJ21pc3NpbmcnID0+IGFycmF5X3ZhbHVlcyhhcnJheV91bmlxdWUoJG1pc3MpKV0pOwogIGlmICgkc2x1ZyAhPT0gJycpIHsKICAgICRiYWQgPSBbXTsgJGtlZXAgPSAnI14vKGZhdmljb25bXi9dKnxyb2JvdHNcLnR4dHxwbGFjZWhvbGRlclwuc3ZnfHNpdGVtYXBcLnhtbHxtYW5pZmVzdFteL10qfGFwcGxlLXRvdWNoLWljb25bXi9dKnxvZ1teL10qXC4ocG5nfGpwZ3x3ZWJwKSkkI2knOwogICAgZm9yZWFjaCAoJGZpbGVzIGFzICRwID0+ICRlKSB7CiAgICAgIGlmIChzdHJwb3MoJHAsICcvJyAuICRzbHVnIC4gJy8nKSA9PT0gMCkgY29udGludWU7CiAgICAgICRmID0gJHJvb3QgLiAkcDsKICAgICAgaWYgKGlzX2ZpbGUoJGYpKSB7IGlmIChmaWxlc2l6ZSgkZikgIT09IChpbnQpJGVbMF0gJiYgIXByZWdfbWF0Y2goJGtlZXAsICRwKSkgJGJhZFtdID0gJHA7IGVsc2UgdW5zZXQoJGZpbGVzWyRwXSk7IH0KICAgIH0KICAgIGlmICgkYmFkKSBvdXQoMjAwLCBbJ29rJyA9PiAwLCAnZXJyb3InID0+ICdFc3RlcyBhcnF1aXZvcyBqw6EgZXhpc3RlbSBuZXN0ZSBkb23DrW5pbyBjb20gY29udGXDumRvIGRpZmVyZW50ZSAoZGUgb3V0cmEgcMOhZ2luYSk6ICcgLiBpbXBsb2RlKCcsICcsIGFycmF5X3NsaWNlKCRiYWQsIDAsIDQpKSAuIChjb3VudCgkYmFkKSA+IDQgPyAnIGUgbWFpcyAnIC4gKGNvdW50KCRiYWQpIC0gNCkgOiAnJykgLiAnLiBQdWJsaWNhciBhcXVpIHBvZGVyaWEgcXVlYnJhciBhIHDDoWdpbmEgcXVlIGrDoSBlc3TDoSBubyBhci4gVXNlIHVtYSBww6FnaW5hIGZlaXRhIGRvIG1lc21vIG1vZGVsbyBvdSBvdXRybyBkb23DrW5pby4nXSk7CiAgfQogICRuID0gMDsga3NvcnQoJGZpbGVzKTsKICBmb3JlYWNoICgkZmlsZXMgYXMgJHAgPT4gJGUpIHsKICAgICRkc3QgPSAkcm9vdCAuICRwOyAkZGQgPSBkaXJuYW1lKCRkc3QpOwogICAgaWYgKCFpc19kaXIoJGRkKSAmJiAhQG1rZGlyKCRkZCwgMDc1NSwgdHJ1ZSkpIG91dCgyMDAsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ07Do28gY29uc2VndWkgY3JpYXIgYSBwYXN0YSAnIC4gZGlybmFtZSgkcCkgLiAnIG5vIHNlcnZpZG9yLiddKTsKICAgICR0bXAgPSAkZHN0IC4gJy5zbHRtcCc7CiAgICBpZiAoIUBjb3B5KGJsb2IoJGVbMV0pLCAkdG1wKSB8fCAoaW50KWZpbGVzaXplKCR0bXApICE9PSAoaW50KSRlWzBdKSB7IEB1bmxpbmsoJHRtcCk7IG91dCgyMDAsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ0ZhbGhhIGFvIGdyYXZhciAnIC4gJHAgLiAnIG5vIHNlcnZpZG9yIChzZW0gZXNwYcOnbyBvdSBzZW0gcGVybWlzc8OjbykuJ10pOyB9CiAgICBpZiAoIUByZW5hbWUoJHRtcCwgJGRzdCkpIHsgQHVubGluaygkZHN0KTsgaWYgKCFAcmVuYW1lKCR0bXAsICRkc3QpKSB7IEB1bmxpbmsoJHRtcCk7IG91dCgyMDAsIFsnb2snID0+IDAsICdlcnJvcicgPT4gJ0ZhbGhhIGFvIGdyYXZhciAnIC4gJHAgLiAnIG5vIHNlcnZpZG9yLiddKTsgfSB9CiAgICAkbisrOwogIH0KICBpZiAoIWlzX2RpcigkbWRpcikpIEBta2RpcigkbWRpciwgMDc1NSwgdHJ1ZSk7CiAgZmlsZV9wdXRfY29udGVudHMoJG1kaXIgLiAnL19zbF9wdWIuanNvbicsIGpzb25fZW5jb2RlKFsndG9rZW4nID0+ICR0b2ssICdhdCcgPT4gcm91bmQobWljcm90aW1lKHRydWUpICogMTAwMCksICdvd25lcicgPT4gJG9pZCwgJ25hbWUnID0+ICRvbm1dLCBKU09OX1VORVNDQVBFRF9VTklDT0RFKSk7CiAgb3V0KDIwMCwgWydvaycgPT4gMSwgJ24nID0+ICRuXSk7Cn0Kb3V0KDQwNCwgWydvaycgPT4gMCwgJ2Vycm9yJyA9PiAnYWNhbyddKTsK','base64').toString('utf8');

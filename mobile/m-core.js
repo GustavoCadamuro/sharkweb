@@ -111,11 +111,28 @@
     return out;
   }
   const hubNeeds = 'Para publicar pelo celular, conecte a sincronização com o computador (Configurações > Sincronização entre aparelhos).';
-  async function hubPublish({ h, mirror, inject, ops, steps, owner, domain, force, liveGap, path: sp, mk, nr }) {
+  /* ---------- velocidade (imagens leves, carregamento) ---------- */
+  async function speedRun(F, o) {
+    try {
+      if (typeof makeSpeed != 'function' || typeof OffscreenCanvas == 'undefined' || typeof createImageBitmap == 'undefined') return { imgs: 0, from: 0, to: 0, files: 0, notes: ['sem suporte'], failed: 1 };
+      const G = Object.assign({}, F);
+      const E = {
+        sha1,
+        enc: async (u, mime, w, q) => { const r = await speedCanvasEnc(u8b64(u), mime, w, q); if (!r || !r.b64) return null; return { u8: b64u8(r.b64), w: r.w, h: r.h } },
+        cacheGet: async k => { try { const v = await kvGet('spd:' + k); return v ? new Uint8Array(v) : null } catch { return null } },
+        cachePut: async (k, v) => { try { await kvSet('spd:' + k, v) } catch { } }
+      };
+      const rep = await makeSpeed(E).apply(G, o);
+      for (const p in G) F[p] = G[p];
+      return rep;
+    } catch (e) { return { imgs: 0, from: 0, to: 0, files: 0, notes: ['falhou: ' + String(e && e.message || e).slice(0, 120)], failed: 1 } }
+  }
+  async function hubPublish({ h, mirror, inject, ops, steps, owner, domain, force, liveGap, path: sp, mk, nr, speed }) {
     const HUB = window.SLHUB; if (!HUB) return { ok: false, error: hubNeeds };
     const dir = String((h && h.dir) || '').trim().replace(/\\/g, '/').replace(/\/+$/, ''); if (!dir || dir == '/') return { ok: false, error: hubNeeds };
     const slug = String(sp || '').replace(/^\/+|\/+$/g, '');
     const F = slug && !steps ? await pathFiles(mirror, inject, ops, slug, nr) : await hostFiles(mirror, inject, ops, steps);
+    let spr = null; if (speed && speed.on) spr = await speedRun(F, { slug, trk: !!speed.trk });
     const tok = [...crypto.getRandomValues(new Uint8Array(8))].map(x => x.toString(16).padStart(2, '0')).join('');
     for (const p in F) if (/(^|\/)index\.html$/.test(p)) F[p] = cat(F[p], te.encode('\n<!--sl-pub:' + tok + '-->'));
     const man = {}, list = []; for (const p of Object.keys(F).sort()) { const u = F[p], hh = await sha1(u); man[p] = [u.length, hh]; list.push({ h: hh, u8: u }) }
@@ -128,7 +145,7 @@
     if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v48 ou mais novo) e deixe a sincronização rodar uma vez.' };
     const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
     const live = domain ? await liveCheck(domain, tok, liveGap) : null;
-    return { ok: true, n: j.n, live };
+    return { ok: true, n: j.n, live, speed: spr };
   }
   const HTA = 'RewriteEngine On\nRewriteBase /\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule . /index.html [L]\n';
   async function filesStatic(mirror, inject, ops, steps) { const F = steps ? await funnelFiles(steps) : await siteFiles(mirror, inject, ops); delete F['/_redirects']; if (!F['/.htaccess']) F['/.htaccess'] = te.encode(HTA); return F }
