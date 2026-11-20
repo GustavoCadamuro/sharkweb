@@ -2,7 +2,8 @@
 var MD={},ops=(window.__SL_OPS||[]).slice(),edit=!!window.__SL_EDIT,done=false,timer,mo;
 function el(p){var e=document.body;for(var i=0;e&&i<p.length;i++)e=e.children[p[i]];return e||null}
 function tpl(h){var t=document.createElement('template');t.innerHTML=h;return t.content}
-function apply(o){try{var e=el(o.path||[]);if(!e)return false;
+function mem(o,e){try{Object.defineProperty(o,'__e',{value:e,enumerable:false,configurable:true,writable:true})}catch(x){}}
+function apply(o,e0){try{var e=e0||el(o.path||[]);if(!e)return false;if(!e0&&(o.op=='text'||o.op=='style'||o.op=='attr'||o.op=='mstyle'))mem(o,e);
 switch(o.op){case'text':e.innerHTML=o.html;break;
 case'style':for(var k in o.props)e.style.setProperty(k,o.props[k],'important');break;
 case'attr':if(o.v==null)e.removeAttribute(o.k);else{e.setAttribute(o.k,o.v);if(o.k=='src')e.removeAttribute('srcset')}break;
@@ -23,7 +24,10 @@ function fx(){if(document.getElementById('__slfx'))return;var s=document.createE
 try{if(/"k":"href","v":"#[^"]|scrollIntoView/.test(JSON.stringify(ops))&&!edit){var sm=document.createElement('style');sm.textContent='html{scroll-behavior:smooth}';(document.head||document.documentElement).appendChild(sm)}}catch(x){}window.__SL_fx=fx;try{if(/slfx/.test(JSON.stringify(ops)))fx()}catch(x){}
 
 function runAll(){for(var i=0;i<ops.length;i++)apply(ops[i])}
-function again(){for(var i=0;i<ops.length;i++){var t=ops[i].op;if(t=='text'||t=='style'||t=='attr'||t=='mstyle')apply(ops[i])}}
+function again(){var st=false,i,o,t;for(i=0;i<ops.length;i++){t=ops[i].op;if(t=='ins'||t=='rm'||t=='dup'||t=='mv'){st=true;break}}
+for(i=0;i<ops.length;i++){o=ops[i];t=o.op;if(t!='text'&&t!='style'&&t!='attr'&&t!='mstyle')continue;
+if(o.__e&&o.__e.isConnected){if(t=='text'&&o.__e.innerHTML===o.html)continue;apply(o,o.__e)}
+else if(!st)apply(o)}}
 var hs;if(ops.length){hs=document.createElement('style');hs.textContent='html{visibility:hidden!important}';(document.head||document.documentElement).appendChild(hs)}
 function hasTxt(){var n=0,c=document.body.children;for(var i=0;i<c.length;i++){if(!NZ[c[i].nodeName]){n+=c[i].textContent.length;if(n>30)return true}}return false}
 function reveal(){if(hs){hs.remove();hs=null}}
