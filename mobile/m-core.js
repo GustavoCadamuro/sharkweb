@@ -40,6 +40,8 @@
   const rt = (() => { const m = {}; return n => m[n] || (m[n] = fetch('/__sl/' + n).then(r => r.text())) })();
   const opsOf = async id => { const u = await fGet(id, '/_sl_ops.json'); return u ? td.decode(u) : '[]' };
   async function injectInline(html, id, ops) {
+    if (!/<meta[^>]+name=["']google["'][^>]*notranslate/i.test(html) && !/<meta[^>]+notranslate[^>]*name=["']google["']/i.test(html)) html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + '<meta name="google" content="notranslate">') : '<meta name="google" content="notranslate">' + html;
+    html = html.replace(/<html\b([^>]*)>/i, (m, a) => /\btranslate\s*=/i.test(a) ? m : '<html' + a + ' translate="no">');
     const x = `<script>window.__SL_OPS=${asciiJs((ops || await opsOf(id)).replace(/</g, '\\u003c'))}<\/script><script>${await rt('patch.js')}<\/script>`;
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + x) : x + html;
   }
@@ -314,6 +316,9 @@ Regras:
     fs: async () => { },
     mops: async ({ id, ops }) => { try { await fPut(id, '/_sl_ops.json', JSON.stringify(ops || [])); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mdel: async id => { try { await fDelAll(id) } catch { } },
+    mhtml: async ({ id }) => { try { const ks = (await fKeys(id)).filter(p => /\.html?$/i.test(p) && !p.startsWith('/_sl')); if (!ks.length) return { ok: false, error: 'Página sem HTML' }; ks.sort((a, b) => (a == '/index.html' ? -1 : b == '/index.html' ? 1 : a.split('/').length - b.split('/').length || a.length - b.length)); return { ok: true, path: ks[0], html: td.decode(await fGet(id, ks[0])) } } catch (e) { return { ok: false, error: String(e.message) } } },
+    mwrite: async ({ id, pth, html }) => { try { if (!pth || /\.\./.test(pth) || pth.startsWith('/_sl') || typeof html != 'string') return { ok: false, error: 'caminho inválido' }; const old = await fGet(id, pth); await kvSet('cbk:' + id, { pth, html: td.decode(old) }); await fPut(id, pth, te.encode(html)); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
+    mundo: async ({ id, peek }) => { try { const b = await kvGet('cbk:' + id); if (!b) return { ok: true, has: false }; if (peek) return { ok: true, has: true }; await fPut(id, b.pth, te.encode(b.html)); await kvSet('cbk:' + id, null); return { ok: true, has: false } } catch (e) { return { ok: false, error: String(e.message) } } },
     mdup: async ({ from, to }) => { try { await fCopy(from, to); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mput: async ({ id, name, data }) => { try { const n = Date.now() + '-' + name.replace(/[^\w.-]/g, '_'); await fPut(id, '/uploads/' + n, b64u8(data.split(',')[1])); return { ok: true, path: '/uploads/' + n } } catch (e) { return { ok: false, error: String(e.message) } } },
     fsize: async ({ id, files }) => { const r = {}; for (const f of files || []) { try { const rel = decodeURIComponent(String(f).split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\/m\/[^/]+/, '')); const u = await fGet(id, rel); if (u) r[f] = u.length } catch { } } return r },
