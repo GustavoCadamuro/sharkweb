@@ -243,6 +243,17 @@ function fixCharset(h){
 }
 /* texto de edicao com acento vira \uXXXX, assim nao depende de como o navegador adivinha a codificacao */
 const asciiJs=s=>String(s).replace(/[\u0080-\uffff]/g,c=>'\\u'+c.charCodeAt(0).toString(16).padStart(4,'0'));
+/* Endereco bonito (/pagina/) sem quebrar os botoes: links de ancora (#secao) rolam ate a secao sem acordar o roteador do site (que daria 404) */
+function prettyJs(slug){
+  return '(function(){var SP='+JSON.stringify('/'+slug+'/')+',P=History.prototype.replaceState;function bs(){return location.pathname+location.search}var last=bs();'
+  +'function pretty(){try{if(location.pathname!=SP){P.call(history,history.state,"",SP+location.search.replace(/([?&])sl=[^&]*&?/,"$1").replace(/[?&]$/,"")+location.hash);last=bs()}}catch(e){}}'
+  +'addEventListener("load",function(){setTimeout(pretty,400)});'
+  +'function go(h){var id="";try{id=decodeURIComponent(h)}catch(e){id=h}var t=id?(document.getElementById(id)||document.getElementsByName(id)[0]):null;if(id&&!t)return false;try{if(t)t.scrollIntoView({behavior:"smooth",block:"start"});else scrollTo({top:0,behavior:"smooth"})}catch(e){}try{P.call(history,history.state,"",location.pathname+location.search+(id?"#"+h:""))}catch(e){}return true}'
+  +'document.addEventListener("click",function(e){if(e.defaultPrevented||e.button||e.metaKey||e.ctrlKey||e.shiftKey||e.altKey)return;var a=e.target&&e.target.closest&&e.target.closest("a[href]");if(!a||(a.target&&a.target!="_self")||a.hasAttribute("download"))return;var raw=a.getAttribute("href")||"";if(raw.indexOf("#")<0)return;var u;try{u=new URL(raw,location.href)}catch(x){return}if(u.origin!=location.origin)return;if(!(u.pathname==location.pathname||u.pathname=="/"||u.pathname==SP))return;if(u.search&&u.search!=location.search)return;if(go(u.hash.slice(1))){e.preventDefault();e.stopPropagation()}},true);'
+  +'addEventListener("hashchange",function(e){if(location.pathname==SP)e.stopImmediatePropagation()},true);'
+  +'addEventListener("popstate",function(e){var b=bs();if(b==last&&location.pathname==SP)e.stopImmediatePropagation();else last=b},true)'
+  +'})()';
+}
 /* codigo que roda numa pagina "de trabalho" (computador: janela escondida; celular: a propria tela) para gerar WebP */
 async function speedCanvasEnc(b64,mime,maxW,q){
   const bin=atob(b64),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
@@ -251,4 +262,4 @@ async function speedCanvasEnc(b64,mime,maxW,q){
   const o=await c.convertToBlob({type:'image/webp',quality:q}),ab=new Uint8Array(await o.arrayBuffer());let s2='';const k=0x8000;for(let i=0;i<ab.length;i+=k)s2+=String.fromCharCode.apply(null,ab.subarray(i,i+k));
   return{w,h,b64:btoa(s2)};
 }
-if(typeof module!='undefined')module.exports={makeSpeed,speedCanvasEnc,fixCharset,asciiJs};
+if(typeof module!='undefined')module.exports={makeSpeed,speedCanvasEnc,fixCharset,asciiJs,prettyJs};

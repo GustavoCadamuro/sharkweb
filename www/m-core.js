@@ -91,7 +91,7 @@
     if (out[k]) {
       let h0 = td.decode(out[k]); const _a = 'history.replaceState(history.state,"","/?sl=' + slug + '"+(q?"&"+q.slice(1):"")+location.hash)', _b = 'history.replaceState(history.state,"","/"+q+location.hash)';
       if (h0.indexOf(_a) >= 0) { h0 = h0.replace(_a, () => _b); out[k] = te.encode(h0) }
-      if (!nr && h0.indexOf(_b) >= 0) out[k] = te.encode(h0.replace(/<head[^>]*>/i, m => m + '<script>addEventListener("load",function(){setTimeout(function(){try{if(location.pathname!="/' + slug + '/"){History.prototype.replaceState.call(history,history.state,"","/' + slug + '/"+location.search.replace(/([?&])sl=[^&]*&?/,"$1").replace(/[?&]$/,"")+location.hash)}}catch(e){}},400)})<\/script>'));
+      if (!nr && h0.indexOf(_b) >= 0) out[k] = te.encode(h0.replace(/<head[^>]*>/i, m => m + '<script>' + prettyJs(slug) + '<\/script>'));
     }
     out['/' + slug + '/.htaccess'] = te.encode(HTC.replace(/^\n/, ''));
     return out;

@@ -112,3 +112,7 @@ table{font-size:12px}
 .top.mtop .b2.sq{min-width:42px;padding:8px 10px}
 .ov{z-index:80!important}
 #toast{z-index:90!important}
+/* v52: no celular o cabeçalho do painel rola junto (a folha é pequena) */
+.spn #sp .eh,.spn .eh,#sp.spn .eh{position:static!important;margin:0 -12px;padding:6px 12px 8px;background:transparent;backdrop-filter:none}
+.spn .ea button[data-t]:hover::after{display:none}
+.spn .ea button{width:36px;height:34px}
