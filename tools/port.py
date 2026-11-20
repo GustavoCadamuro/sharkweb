@@ -20,7 +20,7 @@ def R(a, b):
     assert a in js, a[:60]
     js = js.replace(a, b)
 # clonar: botão Cancelar e ignorar resultado se cancelado
-R("`<p class=mut><i class=sp2></i>Copiando ${esc(h)}...</p>`,[]);api.mirror({id,url:u}).then(r=>{b.remove();if(!r.ok)", "`<p class=mut><i class=sp2></i>Copiando ${esc(h)}... pode levar até 1 minuto.</p>`,[['Cancelar',()=>{window.__c=id}]]);api.mirror({id,url:u}).then(r=>{b.remove();if(window.__c==id)return;if(!r.ok)")
+R("`<p class=mut><i class=sp2></i>Copiando ${esc(h)} e conferindo as animações. Pode levar até 1 minuto...</p>`,[]);api.mirror({id,url:u}).then(r=>{b.remove();if(!r.ok)", "`<p class=mut><i class=sp2></i>Copiando ${esc(h)} e conferindo as animações. Pode levar até 1 minuto...</p>`,[['Cancelar',()=>{window.__c=id}]]);api.mirror({id,url:u}).then(r=>{b.remove();if(window.__c==id)return;if(!r.ok)")
 
 # publicar pelo celular usa o ponto de encontro da sincronização (sem FTP no celular)
 import re as _re
@@ -34,6 +34,6 @@ open(W + '/index.html', 'w', encoding='utf8').write(out)
 open(W + '/app.js', 'w', encoding='utf8').write(js)
 for f in ['speed.js', 'clonefix.js', 'm-core.js', 'm-ui.js', 'sw.js', 'boot.js', 'm.css', 'manifest.webmanifest']:
     if os.path.exists(M + '/' + f): shutil.copy(M + '/' + f, W + '/' + f)
-for f in ['patch.js', 'agent.js']: shutil.copy(D + '/' + f, W + '/__sl/' + f)
+for f in ['patch.js', 'agent.js', 'diag.js', 'acorn.js']: shutil.copy(D + '/' + f, W + '/__sl/' + f)
 shutil.copy(D + '/icon.png', W + '/icon.png')
 print('www gerado:', len(out), 'bytes html,', len(js), 'bytes js')

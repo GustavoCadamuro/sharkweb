@@ -61,7 +61,9 @@ function makeSpeed(E){
     for(const p in T)scan(T[p],p,isHtml(p)?'html':isCss(p)?'css':'js');
     /* 2) gera as versoes leves */
     const conv={};
-    const cands=[...used].filter(p=>KEEP_EXT.test(p)&&info[p]&&info[p].size>=6000&&!/\/_o\//.test(p));
+    /* PNG animado (APNG) nao pode virar WebP parado: fica o original */
+    const isApng=u=>{try{if(!(u[0]==0x89&&u[1]==0x50))return false;let i=8;while(i+8<=u.length){const n=((u[i]<<24)|(u[i+1]<<16)|(u[i+2]<<8)|u[i+3])>>>0,t=String.fromCharCode(u[i+4],u[i+5],u[i+6],u[i+7]);if(t=='acTL')return true;if(t=='IDAT'||t=='IEND')return false;i+=12+n}}catch{}return false};
+    const cands=[...used].filter(p=>KEEP_EXT.test(p)&&info[p]&&info[p].size>=6000&&!/\/_o\//.test(p)&&!isApng(F[p]));
     let cursor=0;
     const work=async p=>{
       const u=F[p],d=info[p],mime=/\.png$/i.test(p)?'image/png':'image/jpeg',sh=hex8(await E.sha1(u));

@@ -57,9 +57,10 @@
     return F;
   }
   const SPA_RE = /<div\s+id=["']root["']\s*>\s*<\/div>/i, KEEP1 = /^\/(favicon[^/]*|robots\.txt|placeholder\.svg|sitemap\.xml|manifest[^/]*|apple-touch-icon[^/]*|og[^/]*\.(png|jpg|webp))$/i;
+  const HASHED = p => { const m = /[-_.]([A-Za-z0-9_]{8,32})\.(?:m?js|css)$/.exec(p); if (!m) return false; const k = m[1]; return /^[0-9a-f]{8,32}$/i.test(k) || (k.length == 8 && !/^[A-Z]?[a-z]+$/.test(k) && /\d|[A-Z].*[A-Z]|[a-z].*[A-Z]/.test(k)) };
   function isSpaHtml(h) { const mod = /<script\b[^>]*\btype=["']module["'][^>]*\bsrc=|<script\b[^>]*\bsrc=[^>]*\btype=["']module["']/i.test(h) || /<script\b[^>]*\btype=["']module["'][^>]*>[^<]*import\(\s*["']\/[^"']+\.m?js/i.test(h), abs = /["'(]\/(assets|_next|build)\/[^"')\s]+\.m?js/i.test(h); return SPA_RE.test(h) || (/<div\s+id=["']root["'][^>]*>/i.test(h) && mod) || (mod && abs) || /\$_TSR|__TSR__|__remixContext|__NEXT_DATA__/.test(h) }
   async function funnelFiles(steps) {
-    const out = {}; let spa = false;
+    const out = {}, srcOf = {}; let spa = false;
     for (const s of steps) {
       const F = await siteFiles(s.pid, s.inject, s.ops || null), slug = String(s.slug || '').replace(/^\/+|\/+$/g, '');
       let h = td.decode(F['/index.html'] || new Uint8Array()); delete F['/index.html']; delete F['/_redirects']; delete F['/.htaccess'];
@@ -70,7 +71,7 @@
       } else out['/index.html'] = te.encode(h);
       for (const p in F) {
         const b = F[p];
-        if (out[p]) { if (!same(out[p], b) && !KEEP1.test(p)) throw new Error('As páginas do funil usam o mesmo arquivo ' + p + ' com conteúdos diferentes (etapa "' + (s.name || slug || 'Front') + '"). Use páginas feitas do mesmo modelo ou me peça ajuda para separar.') } else out[p] = b;
+        if (out[p]) { if (!same(out[p], b) && !KEEP1.test(p) && !HASHED(p) && !(s.origin && srcOf[p] && s.origin === srcOf[p])) throw new Error('As páginas do funil usam o mesmo arquivo ' + p + ' com conteúdos diferentes (etapa "' + (s.name || slug || 'Front') + '"). Use páginas feitas do mesmo modelo ou me peça ajuda para separar.') } else { out[p] = b; srcOf[p] = s.origin || '' }
         if (slug && !isSpa) { const q = '/' + slug + p; if (!out[q]) out[q] = b }
       }
     }
@@ -145,9 +146,9 @@
       if (r.status == 422 && r.json && r.json.error == 'faltam') continue; break;
     }
     if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v48 ou mais novo) e deixe a sincronização rodar uma vez.' };
-    const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
+    const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; if (/já existem neste domínio/.test(j.error || '')) return { ok: false, error: 'O ponto de encontro na Hostinger ainda é de uma versão antiga e não consegue publicar esta página. Abra o Shark Lab v60 no computador (ele atualiza o ponto de encontro sozinho em alguns segundos) e publique de novo.' }; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
     const live = domain ? await liveCheck(domain, tok, liveGap) : null;
-    return { ok: true, n: j.n, live, speed: spr };
+    return { ok: true, n: j.n, live, speed: spr, kept: (j.kept || []).filter(p => !HASHED(p)).length };
   }
   const HTA = 'RewriteEngine On\nRewriteBase /\nRewriteCond %{REQUEST_FILENAME} !-f\nRewriteCond %{REQUEST_FILENAME} !-d\nRewriteRule . /index.html [L]\n';
   async function filesStatic(mirror, inject, ops, steps) { const F = steps ? await funnelFiles(steps) : await siteFiles(mirror, inject, ops); delete F['/_redirects']; if (!F['/.htaccess']) F['/.htaccess'] = te.encode(HTA); return F }
@@ -307,6 +308,88 @@ Regras:
 
   /* ---------- a "api" que a tela usa ---------- */
   const TMPW = new Map();
+  /* ---------- verificação da cópia (v60): abre a cópia escondida, acelera a animação e baixa do site original o que falta ou está danificado ---------- */
+  const swAsk = m => new Promise(res => { const sw = navigator.serviceWorker && navigator.serviceWorker.controller; if (!sw) return res(null); const ch = new MessageChannel(); ch.port1.onmessage = e => res(e.data); try { sw.postMessage(m, [ch.port2]) } catch (e) { return res(null) } setTimeout(() => res(null), 4000) });
+  async function diagRun(id, ms) {
+    await swAsk({ t: 'missReset', id });
+    const f = document.createElement('iframe'); f.setAttribute('aria-hidden', 'true');
+    f.style.cssText = 'position:fixed;left:0;top:0;width:412px;height:800px;border:0;opacity:0.01;pointer-events:none;z-index:-1';
+    document.body.appendChild(f);
+    try {
+      await new Promise(res => { f.onload = res; setTimeout(res, 20000); f.src = '/m/' + id + '/?orig=1&diag=1' });
+      const t0 = Date.now();
+      do {
+        try { const W = f.contentWindow, d = W.document, h = Math.max(d.documentElement.scrollHeight, d.body ? d.body.scrollHeight : 0), st = Math.max(260, Math.round(h / 10)); for (let y = 0; y <= h; y += st) { W.scrollTo(0, y); await new Promise(r => setTimeout(r, 160)) } W.scrollTo(0, 0) } catch (e) { }
+        await new Promise(r => setTimeout(r, 500));
+      } while (Date.now() - t0 < ms);
+      let D = {}; try { D = JSON.parse(JSON.stringify(f.contentWindow.__SL_DIAG || {})) } catch (e) { }
+      return { diag: D, miss: (await swAsk({ t: 'miss', id })) || [] };
+    } finally { f.remove() }
+  }
+  /* conferência de código (v60): um .js que não "fecha" quebra a animação inteira. Lê o arquivo sem executar nada (acorn). */
+  let ACORN_P = null;
+  const acornLoad = () => ACORN_P || (ACORN_P = new Promise(res => { if (window.acorn) return res(window.acorn); const s = document.createElement('script'); s.src = '/__sl/acorn.js'; s.onload = () => res(window.acorn || null); s.onerror = () => res(null); document.head.appendChild(s); setTimeout(() => res(window.acorn || null), 8000) }));
+  const sxParse = (A, code) => {
+    const o = { ecmaVersion: 'latest', allowHashBang: true }; let e1;
+    try { A.parse(code, Object.assign({ sourceType: 'module' }, o)); return null } catch (e) { e1 = e }
+    try { A.parse(code, Object.assign({ sourceType: 'script', allowReturnOutsideFunction: true, allowAwaitOutsideFunction: true }, o)); return null } catch (e) { }
+    const m = String(e1 && e1.message || ''); if (/regular expression|regexp/i.test(m)) return null;
+    return { msg: m.slice(0, 120), line: e1 && e1.loc ? e1.loc.line : 0 };
+  };
+  const JS_RE = /\.(m?js|cjs)$/i;
+  const sameBytes = (a, b) => { if (!a || !b || a.length !== b.length) return false; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false; return true };
+  const isParseErr = e => /SyntaxError/i.test(e && e.m || '') && !(e && e.fr) && !/JSON|regular expression|regexp/i.test(e && e.m || '');
+  async function healFetch(O, id, p, accept) {
+    try {
+      const r = await Promise.race([nfetch(O + p.split('/').map(encodeURIComponent).join('/'), { headers: { 'User-Agent': 'Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36', 'Referer': O + '/' } }), new Promise((_, rj) => setTimeout(() => rj(new Error('t')), 25000))]);
+      if (!r.ok) return false;
+      const u = new Uint8Array(await r.arrayBuffer()); if (!u.length || u.length > 80 * 1048576) return false;
+      if (accept && !accept(u)) return false;
+      if (/text\/html/i.test(r.headers.get('content-type') || '') && !/\.html?$/i.test(p)) return false;
+      if (p.startsWith('/_sl')) return false;
+      const old = await fGet(id, p); if (old && !(await fGet(id, '/_sl_bak/heal' + p))) await fPut(id, '/_sl_bak/heal' + p, old);
+      await fPut(id, p, u); return true;
+    } catch (e) { return false }
+  }
+  async function healMirror(id, origin, o) {
+    o = o || {};
+    if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(id || ''))) return { ok: false, error: 'id inválido' };
+    if (!(await fGet(id, '/index.html'))) return { ok: false, error: 'A página não tem arquivos.' };
+    if (!(navigator.serviceWorker && navigator.serviceWorker.controller)) return { ok: false, error: 'O visualizador ainda não iniciou. Feche e abra o app e tente de novo.' };
+    let O = ''; try { O = new URL(origin).origin } catch (e) { }
+    const STATIC = /\.(m?js|css|map|json|png|jpe?g|gif|webp|avif|svg|ico|bmp|woff2?|ttf|otf|eot|mp4|webm|mov|m4v|mp3|ogg|wav|wasm|txt|xml|webmanifest)$/i;
+    const fixed = [], failed = [], tried = new Set(), syntax = []; let rounds = 0, last = null;
+    const pth = u => { try { const a = new URL(u, location.href); if (a.origin != location.origin) return ''; let q = a.pathname; const m = q.match(/^\/m\/([^/]+)(\/.*)$/); if (m) { if (m[1] != id) return ''; q = m[2] } if (q.startsWith('/__sl/') || q == '/sw.js') return ''; return decodeURIComponent(q) } catch (e) { return '' } };
+    const T0 = Date.now(), BUDGET = o.budget || 100000;
+    /* 0) confere o código de todos os .js da cópia; o que estiver quebrado e o site original tiver inteiro, baixa de novo */
+    let scanned = 0;
+    if (O) {
+      const A = await acornLoad();
+      if (A) {
+        const bad = [];
+        try { for (const p of (await fKeys(id))) { if (p.startsWith('/_sl') || !/\.(m?js|cjs)$/i.test(p)) continue; const u = await fGet(id, p); if (!u || !u.length || u.length > 15 * 1048576) continue; if (sxParse(A, td.decode(u))) bad.push({ p }); await new Promise(r => setTimeout(r, 0)) } } catch (e) { }
+        scanned = bad.length;
+        const it = bad.slice(0, 40);
+        const pool = async () => { while (it.length) { const { p } = it.shift(); if (Date.now() - T0 > BUDGET) break; tried.add(p); const cur = await fGet(id, p); if (await healFetch(O, id, p, u => !sameBytes(u, cur) && !sxParse(A, td.decode(u)))) { fixed.push({ p, why: 'danificado' }); if (!syntax.includes(p)) syntax.push(p) } } };
+        await Promise.all([pool(), pool(), pool()]);
+      }
+    }
+    for (let r = 0; r < 4 && (r == 0 || Date.now() - T0 < BUDGET); r++) {
+      rounds++; last = await diagRun(id, r ? 8000 : Math.max(5000, o.ms || 12000));
+      const T = new Map();
+      for (const m of last.miss) if (!tried.has(m)) T.set(m, 'falta');
+      for (const e of (last.diag.errs || [])) { if (isParseErr(e)) { const p = pth(e.f); if (p && JS_RE.test(p) && !p.startsWith('/_sl')) { if (!syntax.includes(p)) syntax.push(p); if (!tried.has(p)) T.set(p, 'danificado') } } }
+      for (const b of (last.diag.bad || [])) { const p = pth(b); if (p && !tried.has(p) && STATIC.test(p) && !last.miss.includes(p) && !T.has(p)) T.set(p, 'invalido') }
+      if (!T.size || !O) break;
+      let n = 0; const it = [...T].slice(0, 80);
+      const pool = async () => { while (it.length) { const [p, why] = it.shift(); tried.add(p); if (Date.now() - T0 > BUDGET + 60000) { failed.push({ p, why: 'tempo' }); continue } if (await healFetch(O, id, p)) { fixed.push({ p, why }); n++ } else failed.push({ p, why }) } };
+      await Promise.all([pool(), pool(), pool(), pool()]);
+      if (!n) break;
+    }
+    const left = last ? (last.diag.errs || []).filter(e => isParseErr(e) && JS_RE.test(pth(e.f) || '')).length : 0;
+    return { ok: true, rounds, scanned, fixed, failed: failed.slice(0, 30), syntax, syntaxLeft: left, noOrigin: !O, errs: ((last && last.diag.errs) || []).slice(0, 8), logs: [] };
+  }
+
   const api = {
     loadSync: () => PAGES,
     save: p => saveP(p),
@@ -322,7 +405,7 @@ Regras:
     mdup: async ({ from, to }) => { try { await fCopy(from, to); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mput: async ({ id, name, data }) => { try { const n = Date.now() + '-' + name.replace(/[^\w.-]/g, '_'); await fPut(id, '/uploads/' + n, b64u8(data.split(',')[1])); return { ok: true, path: '/uploads/' + n } } catch (e) { return { ok: false, error: String(e.message) } } },
     fsize: async ({ id, files }) => { const r = {}; for (const f of files || []) { try { const rel = decodeURIComponent(String(f).split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\/m\/[^/]+/, '')); const u = await fGet(id, rel); if (u) r[f] = u.length } catch { } } return r },
-    mrep: async ({ id, a, b, apply }) => { try { let n = 0, f = 0; for (const p of await fKeys(id)) { if (!TX.test(p) || p.startsWith('/_sl')) continue; const t = td.decode(await fGet(id, p)), c = t.split(a).length - 1; if (c) { n += c; f++; if (apply) await fPut(id, p, t.split(a).join(b)) } } return { ok: true, n, f } } catch (e) { return { ok: false, error: String(e.message) } } },
+    mheal: async ({ id, origin, ms }) => { try { return await healMirror(id, origin, { ms }) } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
     imgopt: async ({ id }) => {
       try {
         let n = 0, saved = 0;
@@ -362,7 +445,8 @@ Regras:
         } catch (e) { more = { error: String(e && e.message || e) } }
         if (c.thumb) items.push(['/_sl_thumb.jpg', b64u8(c.thumb)]);
         await fMany(id, items);
-        return { ok: true, count: items.length - (c.thumb ? 1 : 0), thumb: c.thumb ? 1 : 0, more };
+        let hr = null; try { hr = await healMirror(id, c.url, { ms: 10000 }) } catch (e) { }
+        return { ok: true, count: items.length - (c.thumb ? 1 : 0) + (hr && hr.fixed ? hr.fixed.length : 0), thumb: c.thumb ? 1 : 0, more, heal: hr };
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
     ckview: async ({ url, title }) => {

@@ -10,6 +10,9 @@ const cmGet = async c => { if (CM.has(c)) return CM.get(c); try { const d = awai
 const cmSet = async (c, id) => { if (!c || CM.get(c) == id) return; CM.set(c, id); try { const d = await db(), s = d.transaction('kv', 'readwrite').objectStore('kv'); const m = (await rq(s.get('cmap'))) || {}; const k = Object.keys(m); if (k.length > 60) k.slice(0, 30).forEach(x => delete m[x]); m[c] = id; s.put(m, 'cmap') } catch (e) { } };
 const rt = {}; const stat = n => rt[n] || (rt[n] = fetch('/__sl/' + n, { cache: 'no-store' }).then(r => r.text()));
 const ext = p => { const m = /\.[a-z0-9]+$/i.exec(p); return m ? m[0].toLowerCase() : '' };
+/* arquivos que a pagina pede e a copia nao tem (a verificacao baixa do site original) */
+const MISS = new Map(); const noteMiss = (id, p) => { let s = MISS.get(id); if (!s) MISS.set(id, s = new Set()); if (s.size < 400) s.add(p) };
+self.addEventListener('message', e => { const d = e.data || {}, port = e.ports && e.ports[0]; if (!port) return; if (d.t == 'miss') port.postMessage([...(MISS.get(d.id) || [])]); else if (d.t == 'missReset') { MISS.set(d.id, new Set()); port.postMessage(1) } });
 
 self.addEventListener('install', () => self.skipWaiting());
 self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
@@ -20,7 +23,7 @@ async function page(id, path, u) {
   let ops = '[]'; if (!orig) { const o = await fGet(id, '/_sl_ops.json'); if (o) ops = td.decode(o) }
   const sp = new URLSearchParams(u.search); sp.set('__sl', id);
   const fix = `<script>try{history.replaceState(null,'',${JSON.stringify(path + '?' + sp.toString() + u.hash)})}catch(e){}<\/script>`;
-  const x = fix + '<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>' + `<script>${edit ? 'window.__SL_EDIT=1;' : ''}window.__SL_OPS=${ops.replace(/</g, '\\u003c')}<\/script><script src="/__sl/patch.js"><\/script>` + (edit ? '<script src="/__sl/agent.js"><\/script>' : '');
+  const x = (q.has('diag') ? '<script src="/__sl/diag.js"><\/script>' : '') + fix + '<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>' + `<script>${edit ? 'window.__SL_EDIT=1;' : ''}window.__SL_OPS=${ops.replace(/</g, '\\u003c')}<\/script><script src="/__sl/patch.js"><\/script>` + (edit ? '<script src="/__sl/agent.js"><\/script>' : '');
   let h = td.decode(b); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, m => m + x) : x + h;
   return new Response(h, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }
@@ -29,7 +32,7 @@ async function serve(id, path, u, nav) {
   if (p.endsWith('/')) p += 'index.html';
   if (p == '/index.html') return page(id, '/' + (path == '/' ? '' : ''), u);
   let b = await fGet(id, p);
-  if (!b) { if (nav || !ext(p) || ext(p) == '.html') return page(id, path, u); return new Response('', { status: 404 }) }
+  if (!b) { if (nav || !ext(p) || ext(p) == '.html') return page(id, path, u); noteMiss(id, p); return new Response('', { status: 404 }) }
   return new Response(b, { headers: { 'content-type': MT[ext(p)] || 'application/octet-stream', 'cache-control': 'no-store' } });
 }
 
