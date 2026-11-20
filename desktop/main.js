@@ -60,11 +60,17 @@ if(th)fs.writeFileSync(path.join(dir,'_sl_thumb.jpg'),Buffer.from(th,'base64'));
 async function diagRun(id,ms){
   MISS.set(id,new Set());
   const ses=session.fromPartition('dg'+Date.now()+Math.random().toString(36).slice(2));ses.protocol.handle('mirror',mh);
+  /* a verificacao roda sozinha e escondida: nao deixa a pagina pedir camera, microfone, localizacao, notificacoes... */
+  ses.setPermissionRequestHandler((_w,_p,cb)=>cb(false));ses.setPermissionCheckHandler(()=>false);
   /* a verificacao so le: nao dispara rastreadores (pixel, analytics) nem envia nada para a internet */
   ses.webRequest.onBeforeRequest((d,cb)=>{if(trkBlock(d.url))return cb({cancel:true});const m=String(d.method||'GET').toUpperCase();if(m!='GET'&&m!='HEAD'&&m!='OPTIONS'&&/^https?:/i.test(d.url))return cb({cancel:true});cb({})});
   const w=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{session:ses,offscreen:true,backgroundThrottling:false}}),logs=[];
   try{
     w.webContents.on('console-message',(e,l,m,ln,src)=>{if(l>=2&&logs.length<60)logs.push({m:String(m).slice(0,240),s:String(src||'')})});
+    /* fica na propria pagina: sem janelas novas e sem sair para outro site (redirecionamento por tempo, link de checkout...) */
+    w.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    const stay=(e,u)=>{const x=String(u).toLowerCase(),m=('mirror://'+id).toLowerCase();if(!(x.startsWith(m+'/')||x.startsWith(m+'?')))e.preventDefault()};
+    w.webContents.on('will-navigate',stay);w.webContents.on('will-redirect',stay);
     const lim=(p,t)=>Promise.race([p,sl(t).then(()=>null)]);
     await lim(w.loadURL('mirror://'+id+'/?orig=1&diag=1').catch(()=>{}),20000);
     const t0=Date.now();
