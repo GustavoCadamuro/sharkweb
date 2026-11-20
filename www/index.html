@@ -268,5 +268,18 @@ button.fx-iss.on{background:#3a181c;border-color:#ef4444}
 .sci{font-style:normal;width:24px;height:24px;border-radius:8px;background:#1a2040;color:#9fb3ff;display:inline-grid;place-items:center;font-size:12px;font-weight:600;flex:none}
 #sp .sc{scroll-margin-top:150px}#sp .sc summary{padding:12px 2px}
 #sp .sc[open] summary{border-bottom:0}
+
+/* v54: organizacao em cartoes e grupos */
+#sp .secs{gap:12px}
+#sp .sc{background:#11131b;border:1px solid #1d2030;border-radius:16px;overflow:hidden;border-bottom:1px solid #1d2030}
+#sp .sc[open]{border-color:#2a3158;background:#12141e}
+#sp .sc summary{padding:12px 14px;font-size:14px}
+#sp .sc[open] summary{border-bottom:1px solid #1d2030;background:#151826}
+#sp .sb{padding:2px 14px 14px}
+.gp{padding:12px 0 2px;margin-top:2px}.gp+.gp{border-top:1px dashed #23273a;margin-top:10px}
+.gp>h6{margin:0 0 6px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#7f8cc4}
+#sp .scb{background:#11131b;border:1px solid #1d2030;border-radius:12px;padding:8px 10px;margin:2px 0 4px}
+#sp .scb.on{background:#2a2008;border-color:#b7791f}
+.sci{background:#1d2547}#sc_lnk .sci,#sp #sc_lnk>summary .sci{background:#12332a;color:#6fe0b0}#sc_fun .sci{background:#3a2150;color:#d9a8ff}#sc_tam .sci{background:#1c3350;color:#8fc7ff}#sc_bor .sci{background:#3a2e14;color:#ffd078}#sc_bst .sci{background:#3a1f33;color:#ff9fd8}#sc_vis .sci{background:#262a3a;color:#b9bfd8}
 </style><link rel="stylesheet" href="m.css"></head><body><div id=splash><div class=sk-wrap><svg class=sk viewBox="0 0 240 120" width=190 height=95 aria-hidden=true><defs><linearGradient id=skg x1=0 y1=0 x2=0 y2=1><stop offset=0 stop-color="#7c9bff"/><stop offset=1 stop-color="#3a58d6"/></linearGradient></defs><g class=skb><path d="M96 40C102 26 112 15 126 8C123 22 125 33 132 44Z" fill="#3a58d6"/><path d="M108 80C106 94 98 102 88 108C110 104 128 96 136 82Z" fill="#3a58d6"/><path d="M16 66C46 40 98 30 146 42C170 48 186 58 208 50L197 68L214 90C188 80 170 83 152 81C108 97 52 93 16 66Z" fill="url(#skg)"/><path d="M26 69C58 85 104 89 150 79C110 92 54 90 26 69Z" fill="#e4ebff" opacity=".9"/><circle cx=46 cy=60 r=3.4 fill="#0b0c11"/><circle cx=47.2 cy=58.8 r=1 fill="#fff"/><path d="M62 58q3 6 0 12M70 57q3 6 0 13M78 57q3 6 0 13" stroke="#2c45b8" stroke-width="1.6" fill="none" stroke-linecap="round"/><path d="M18 68Q32 73 46 71" stroke="#2c45b8" stroke-width="1.6" fill="none" stroke-linecap="round"/></g></svg><svg class=wv viewBox="0 0 480 40" preserveAspectRatio="none"><path d="M0 20Q30 4 60 20T120 20T180 20T240 20T300 20T360 20T420 20T480 20V40H0Z" fill="#4f7cff" opacity=".28"/></svg><svg class="wv w2" viewBox="0 0 480 40" preserveAspectRatio="none"><path d="M0 22Q30 8 60 22T120 22T180 22T240 22T300 22T360 22T420 22T480 22V40H0Z" fill="#6d4cff" opacity=".22"/></svg><i class=bb style="left:30%;animation-delay:0s"></i><i class=bb style="left:56%;animation-delay:.7s"></i><i class=bb style="left:68%;animation-delay:1.3s"></i></div><b>Shark Lab</b><div class=bar><i></i></div></div>
 <div id=side><div class=logo><img src="icon.png" width=30 height=30 style="border-radius:8px;display:block">Shark Lab</div><div class="nav on" data-v=list onclick="go('list')">▤ Páginas</div><div class=nav data-v=fnl onclick="go('fnl')">◈ Funis</div><div class=nav data-v=dash onclick="go('dash')">◔ Dashboard</div><div class=nav data-v=cfg onclick="go('cfg')">⚙ Configurações</div></div><div id=main><div class=pad><div class=hero style="height:190px"></div></div></div><div id=toast></div><script src="lib/jszip.min.js"></script><script src="speed.js"></script><script src="clonefix.js"></script><script src="m-core.js"></script><script src="m-ui.js"></script><script src="boot.js"></script></body></html>
