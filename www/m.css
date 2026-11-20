@@ -86,7 +86,7 @@ table{font-size:12px}
 .ov{background:#000b}
 /* lista de páginas */
 .hero{padding:18px 16px!important;border-radius:20px}
-.hero .sub{display:none}
+.hero .sub{font-size:11px;margin-bottom:4px}
 .hero h1{font-size:22px;margin-bottom:4px}
 .hero>.mut{font-size:13px;margin:0 0 12px}
 .cloner{display:flex;flex-wrap:wrap;gap:8px;padding:10px;border-radius:16px}

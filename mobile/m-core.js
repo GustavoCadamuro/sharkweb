@@ -24,12 +24,13 @@
   const kvGet = k => rq(st('kv').get(k));
   const kvSet = (k, v) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); return done(t) };
   const range = id => IDBKeyRange.bound(id + '/', id + '/\uffff');
+  const HC = new Map(); let GEN = 0; const hcDrop = (id, p) => { GEN++; if (p == null) HC.delete(id); else { const m = HC.get(id); if (m) m.delete(p) } };
   const fGet = async (id, p) => { const r = await rq(st('files').get(id + p)); return r ? new Uint8Array(r) : null };
-  const fPut = (id, p, u) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(toU8(u).buffer.slice(toU8(u).byteOffset, toU8(u).byteOffset + toU8(u).byteLength), id + p); return done(t) };
+  const fPut = (id, p, u) => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').put(toU8(u).buffer.slice(toU8(u).byteOffset, toU8(u).byteOffset + toU8(u).byteLength), id + p); return done(t).then(() => hcDrop(id, p)) };
   const fKeys = async id => (await rq(st('files').getAllKeys(range(id)))).map(k => k.slice(id.length));
-  const fDelAll = id => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').delete(range(id)); return done(t) };
-  const fCopy = async (a, b) => { const keys = await rq(st('files').getAllKeys(range(a))), vals = await rq(st('files').getAll(range(a))); const t = db.transaction('files', 'readwrite'), s = t.objectStore('files'); s.delete(range(b)); keys.forEach((k, i) => { if (!/_sl_bak/.test(k)) s.put(vals[i], b + k.slice(a.length)) }); return done(t) };
-  const fMany = async (id, items) => { const t = db.transaction('files', 'readwrite'), s = t.objectStore('files'); s.delete(range(id)); for (const [p, u] of items) { const x = toU8(u); s.put(x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength), id + p) } return done(t) };
+  const fDelAll = id => { const t = db.transaction('files', 'readwrite'); t.objectStore('files').delete(range(id)); return done(t).then(() => hcDrop(id)) };
+  const fCopy = async (a, b) => { const keys = await rq(st('files').getAllKeys(range(a))), vals = await rq(st('files').getAll(range(a))); const t = db.transaction('files', 'readwrite'), s = t.objectStore('files'); s.delete(range(b)); keys.forEach((k, i) => { if (!/_sl_bak/.test(k)) s.put(vals[i], b + k.slice(a.length)) }); return done(t).then(() => hcDrop(b)) };
+  const fMany = async (id, items) => { const t = db.transaction('files', 'readwrite'), s = t.objectStore('files'); s.delete(range(id)); for (const [p, u] of items) { const x = toU8(u); s.put(x.buffer.slice(x.byteOffset, x.byteOffset + x.byteLength), id + p) } return done(t).then(() => hcDrop(id)) };
 
   let PAGES = null, CFG = '';
   const saveP = p => { PAGES = p; return kvSet('pages', JSON.stringify(p)).then(() => ({ ok: true }), e => ({ ok: false, error: String(e && e.message || e) })) };
@@ -232,6 +233,7 @@ Regras:
   const doh = async (name, type) => { try { const r = await fetch('https://dns.google/resolve?name=' + encodeURIComponent(name) + '&type=' + type); const j = await r.json(); return (j.Answer || []).filter(a => a.type == (type == 'A' ? 1 : 5)).map(a => a.data) } catch { try { const r = await nfetch('https://dns.google/resolve?name=' + encodeURIComponent(name) + '&type=' + type); const j = await r.json(); return (j.Answer || []).filter(a => a.type == (type == 'A' ? 1 : 5)).map(a => a.data) } catch { return [] } } };
 
   /* ---------- a "api" que a tela usa ---------- */
+  const TMPW = new Map();
   const api = {
     loadSync: () => PAGES,
     save: p => saveP(p),
@@ -321,7 +323,8 @@ Regras:
       const n = SN(); if (!n) return { ok: false, error: 'O FTP só funciona no aplicativo do celular.' };
       try { const o = ftpOpts(h), dir = String(h.dir || '').trim(); const r = await n.ftpTest({ ...o, dir }); return { ok: true, exists: r.exists !== false } } catch (e) { return { ok: false, error: ftpErr(e) } }
     },
-    hftp: async ({ h, mirror, inject, ops, steps }) => {
+    hftp: async () => ({ ok: false, error: 'Publicar na Hostinger pelo celular ainda não está liberado nesta versão, para não bagunçar os endereços que já estão no ar. Publique pelo computador: a página já está sincronizada.' }),
+    hftp_antigo: async ({ h, mirror, inject, ops, steps }) => {
       const n = SN(); if (!n) return { ok: false, error: 'O FTP só funciona no aplicativo do celular.' };
       let sid = null;
       try {
@@ -357,6 +360,36 @@ Regras:
         const id = String(mt.acct || '').split(/[,;\s]+/)[0].replace(/\D/g, ''); const j = await jf(FBU + '/' + ((mt.ver || '').trim() ? (mt.ver.trim() + '/') : '') + 'act_' + id + '?fields=name,currency,account_status&access_token=' + encodeURIComponent((mt.tok || '').trim())); return { ok: true, info: 'Conectado: ' + j.name + ' (' + j.currency + ')', cur: j.currency };
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
+    /* ---------- sincronização com o computador (fase 1: ver tudo no celular) ---------- */
+    mobile: true,
+    shttp: async ({ url, method, headers, b64, timeout }) => {
+      const run = (async () => { const r = await nfetch(url, { method: method || 'GET', headers: headers || {}, body: b64 ? b64u8(b64) : undefined }); const u = new Uint8Array(await r.arrayBuffer()), hd = {}; r.headers.forEach((v, k) => hd[k] = v); return { status: r.status, headers: hd, b64: u8b64(u) } })();
+      let tm; const lim = new Promise((_, rej) => { tm = setTimeout(() => rej(new Error('tempo esgotado')), timeout || 60000) });
+      try { return await Promise.race([run, lim]) } finally { clearTimeout(tm) }
+    },
+    sfList: async id => {
+      const g0 = GEN, keys = (await fKeys(id)).filter(p => !/^\/_sl_bak/.test(p)), old = HC.get(id) || new Map(), nm = new Map(), out = [];
+      for (const p of keys) { let e = old.get(p); if (!e) { const u = await fGet(id, p); if (!u) continue; e = { s: u.length, h: await sha1(u) } } nm.set(p, e); out.push({ p, s: e.s, h: e.h }) }
+      if (g0 === GEN) HC.set(id, nm); else HC.delete(id);
+      out.sort((a, b) => a.p < b.p ? -1 : 1); return out;
+    },
+    sfRead: async ({ id, p, off, len }) => { const u = await fGet(id, p); if (!u) throw new Error('arquivo não encontrado'); return { b64: u8b64(u.subarray(off || 0, (off || 0) + len)) } },
+    sfWrite: async ({ id, p, b64, off, total, h }) => {
+      try {
+        if (!/^[A-Za-z0-9_-]{1,64}$/.test(String(id)) || String(p)[0] != '/' || /(^|\/)\.\.(\/|$)/.test(p)) return { ok: false, error: 'caminho inválido' };
+        const k = id + p, b = b64u8(b64 || ''); let t = TMPW.get(k);
+        if (!off) { t = { parts: [], n: 0 }; TMPW.set(k, t) } else if (!t || off !== t.n) return { ok: false, error: 'sequência de envio inválida' };
+        t.parts.push(b); t.n += b.length;
+        if (t.n >= total) {
+          TMPW.delete(k); const u = new Uint8Array(t.n); let o = 0; for (const x of t.parts) { u.set(x, o); o += x.length }
+          if (h && await sha1(u) !== h) return { ok: false, error: 'arquivo corrompido na transferência' };
+          await fPut(id, p, u); return { ok: true, done: true };
+        }
+        return { ok: true };
+      } catch (e) { return { ok: false, error: String(e.message || e) } }
+    },
+    sfRm: async ({ id, p }) => { try { const t = db.transaction('files', 'readwrite'); t.objectStore('files').delete(id + p); await done(t); hcDrop(id, p); return { ok: true } } catch (e) { return { ok: false, error: String(e.message || e) } } },
+    probe: async () => ({ ok: false, error: 'A verificação automática só existe no computador.' }),
     /* usados pela sincronização e pelos testes */
     _fKeys: fKeys, _fGet: fGet, _fPut: fPut, _fMany: fMany, _fDelAll: fDelAll, _kvGet: kvGet, _kvSet: kvSet, _nfetch: nfetch, _native: NATIVE,
   };
