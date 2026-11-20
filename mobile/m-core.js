@@ -45,12 +45,22 @@
     const x = `<script>window.__SL_OPS=${asciiJs((ops || await opsOf(id)).replace(/</g, '\\u003c'))}<\/script><script>${await rt('patch.js')}<\/script>`;
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + x) : x + html;
   }
+  function applyPoster(h,B){try{if(!B||typeof B.b!='string')return h;const lb=h.toLowerCase().lastIndexOf('</body>');if(lb<0||!/<head[^>]*>/i.test(h)||!/<\/head>/i.test(h))return h;
+  const AR=/([^\s"'<>\/=]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g,eq=s=>String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  const mt=(tag,add)=>{const re=new RegExp('<'+tag+'\\b([^>]*)>','i');if(!re.test(h))return;h=h.replace(re,(m,a)=>{const o={};let x;AR.lastIndex=0;while((x=AR.exec(a)))o[x[1].toLowerCase()]=x[2]!=null?x[2]:x[3]!=null?x[3]:x[4]!=null?x[4]:'';for(const k in add){if(/^(id|translate)$/i.test(k)&&o[k]!=null)continue;const v=add[k];if(k=='class'){const s=new Set((o.class||'').split(/\s+/).filter(Boolean));String(v).split(/\s+/).filter(Boolean).forEach(c=>s.add(c));o.class=[...s].join(' ')}else if(k=='style'){o.style=((o.style||'').replace(/;?\s*$/,';')+v).replace(/^;/,'')}else if(o[k]==null)o[k]=v}return'<'+tag+Object.keys(o).map(k=>' '+k+'="'+eq(o[k])+'"').join('')+'>'})};
+  mt('html',Object.assign({},B.ha||{},{class:((B.ha&&B.ha.class)||'')+' slp'}));mt('body',B.ba||{});
+  const css='html.slp body>*:not(#__slp):not(#__slpm):not(script):not(style):not(link):not(noscript):not(template){position:absolute!important;left:0!important;top:0!important;width:100%!important;visibility:hidden!important;pointer-events:none!important}#__slp,#__slpm{display:contents}'+(B.mb?'@media(max-width:767px){#__slp{display:none!important}}@media(min-width:768px){#__slpm{display:none!important}}':'#__slpm{display:none!important}');
+  const add=(B.ln||[]).map(u=>'<link rel="stylesheet" href="'+eq(u)+'">').join('')+(B.st||[]).map(s=>'<style data-slp>'+String(s).replace(/<\/style/gi,'<\\/style')+'</style>').join('');
+  h=h.replace(/<head[^>]*>/i,m=>m+'<script>window.__SL_POSTER=1<\/script><style id="__slps">'+css+'</style>');
+  h=h.replace(/<\/head>/i,()=>add+'</head>');const lb2=h.toLowerCase().lastIndexOf('</body>');
+  return h.slice(0,lb2)+'<div id="__slp">'+B.b+'</div>'+(B.mb?'<div id="__slpm">'+B.mb+'</div>':'')+h.slice(lb2)}catch(e){return h}}
+  async function bakeGet(id, os, raw) { try { if (os == '[]') return null; const j = JSON.parse(await kvGet('bake:' + id) || 'null'); return j && j.k == await sha1(te.encode(td.decode(raw) + '\0' + os)) ? j.bake : null } catch (e) { return null } }
   async function siteFiles(id, inject, ops) {
     const F = {};
     for (const p of (await fKeys(id)).sort()) {
       if (p.startsWith('/_sl')) continue;
       let b = await fGet(id, p);
-      if (p == '/index.html') { let h = await injectInline(td.decode(b), id, ops ? JSON.stringify(ops) : null); if (inject) h = h.replace(/<\/head>/i, () => inject + '</head>'); h = fixCharset(h); b = te.encode(h) }
+      if (p == '/index.html') { const os = ops ? JSON.stringify(ops) : await opsOf(id); let h = await injectInline(td.decode(b), id, os); const bk = await bakeGet(id, os, b); if (bk) h = applyPoster(h, bk); if (inject) h = h.replace(/<\/head>/i, () => inject + '</head>'); h = fixCharset(h); b = te.encode(h) }
       F[p] = b;
     }
     if (!F['/_redirects']) F['/_redirects'] = te.encode('/*  /index.html  200\n');
@@ -316,6 +326,8 @@ Regras:
     fs: async () => { },
     mops: async ({ id, ops }) => { try { await fPut(id, '/_sl_ops.json', JSON.stringify(ops || [])); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mdel: async id => { try { await fDelAll(id) } catch { } },
+    mbk: async ({ id }) => { try { const os = await opsOf(id); if (os == '[]') return { ok: true, none: true }; const raw = await fGet(id, '/index.html'); if (!raw) return { ok: false, error: 'sem index' }; return { ok: true, has: !!(await bakeGet(id, os, raw)), n: JSON.parse(os).length } } catch (e) { return { ok: false, error: String(e.message) } } },
+    mbake: async ({ id, bake }) => { try { const os = await opsOf(id), raw = await fGet(id, '/index.html'); if (!raw) return { ok: false, error: 'sem index' }; await kvSet('bake:' + id, JSON.stringify({ k: await sha1(te.encode(td.decode(raw) + '\0' + os)), bake })); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mhtml: async ({ id }) => { try { const ks = (await fKeys(id)).filter(p => /\.html?$/i.test(p) && !p.startsWith('/_sl')); if (!ks.length) return { ok: false, error: 'Página sem HTML' }; ks.sort((a, b) => (a == '/index.html' ? -1 : b == '/index.html' ? 1 : a.split('/').length - b.split('/').length || a.length - b.length)); return { ok: true, path: ks[0], html: td.decode(await fGet(id, ks[0])) } } catch (e) { return { ok: false, error: String(e.message) } } },
     mwrite: async ({ id, pth, html }) => { try { if (!pth || /\.\./.test(pth) || pth.startsWith('/_sl') || typeof html != 'string') return { ok: false, error: 'caminho inválido' }; const old = await fGet(id, pth); await kvSet('cbk:' + id, { pth, html: td.decode(old) }); await fPut(id, pth, te.encode(html)); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mundo: async ({ id, peek }) => { try { const b = await kvGet('cbk:' + id); if (!b) return { ok: true, has: false }; if (peek) return { ok: true, has: true }; await fPut(id, b.pth, te.encode(b.html)); await kvSet('cbk:' + id, null); return { ok: true, has: false } } catch (e) { return { ok: false, error: String(e.message) } } },
