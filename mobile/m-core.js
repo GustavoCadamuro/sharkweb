@@ -125,7 +125,7 @@
       r = await HUB.hubJson('publish', '', { dir, slug, files: man, tok, owner: owner || {}, force: !!force, mk: !!mk });
       if (r.status == 422 && r.json && r.json.error == 'faltam') continue; break;
     }
-    if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v47) e deixe a sincronização rodar uma vez.' };
+    if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v48 ou mais novo) e deixe a sincronização rodar uma vez.' };
     const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
     const live = domain ? await liveCheck(domain, tok, liveGap) : null;
     return { ok: true, n: j.n, live };

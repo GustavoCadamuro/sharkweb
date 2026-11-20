@@ -1,7 +1,9 @@
 
 const $=s=>document.querySelector(s),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])),uid=()=>'p'+Math.random().toString(36).slice(2,9).replace(/^\d/,'a'),deb=(f,t)=>{let x;return(...a)=>{clearTimeout(x);x=setTimeout(()=>f(...a),t)}};
 let pages=[],cfg=(()=>{let a=null;try{a=JSON.parse(localStorage.getItem('cfg')||'null')}catch{}if(a&&Object.keys(a).length){try{api.cfgSave(JSON.stringify(a))}catch{}return a}try{const t=api.cfgLoad();if(t){const b=JSON.parse(t);try{localStorage.setItem('cfg',t)}catch{}return b}}catch{}return{}})(),cur,tab='el',dev='m',view='list',prev=0,si=null,rs=0,sm=0,pend=null,aiBusy=0,aiOut=null,msi=null,scy=0;
-const sv=()=>{clearTimeout(sv.t);sv.t=setTimeout(()=>api.save(pages).then(r=>{SYNC.kick(6000);const e=$('#svs');if(e)e.textContent=r.ok?'Salvo ✓':'';if(!r.ok)toast('Erro ao salvar: '+r.error)}),250);const e=$('#svs');if(e)e.textContent='Salvando...'},sc=()=>{const t=JSON.stringify(cfg);try{localStorage.setItem('cfg',t)}catch{}api.cfgSave(t)};
+const sv=()=>{clearTimeout(sv.t);sv.t=setTimeout(()=>api.save(pages).then(r=>{SYNC.kick(1200);const e=$('#svs');if(e)e.textContent=r.ok?'Salvo ✓':'';if(!r.ok)toast('Erro ao salvar: '+r.error)}),250);const e=$('#svs');if(e)e.textContent='Salvando...'},sc=()=>{const t=JSON.stringify(cfg);try{localStorage.setItem('cfg',t)}catch{}api.cfgSave(t)};
+/* Shark Lab - motor de sincronizacao (igual no computador e no celular).
+   Cada pagina = ficha (JSON) + arquivos. Os arquivos viajam por "hash" (sem repetir o que o servidor ja tem). */
 /* Shark Lab - motor de sincronizacao (igual no computador e no celular).
    Cada pagina = ficha (JSON) + arquivos. Os arquivos viajam por "hash" (sem repetir o que o servidor ja tem). */
 /* Shark Lab - motor de sincronizacao (igual no computador e no celular).
@@ -20,13 +22,13 @@ function makeSync(E){
   let running=false,again=false,timer=null,kt=null,chunk=1500000,st={txt:'',busy:0,err:''};
   const status=(txt,busy)=>{st={txt:txt||'',busy:!!busy,err:S.err||''};E.onStatus&&E.onStatus(st)};
   const jsonOf=r=>{try{return JSON.parse(td.decode(r.u8))}catch{return null}};
-  async function call(act,q,body,raw,quick){
+  async function call(act,q,body,raw,quick,ct){
     const c=cfgS();if(!c)throw new Error('Sincronização desligada');
     let tries=0,viaq=false;
     for(;;){
       try{
         const url=c.url+'?a='+act+(q?'&'+q:'')+(viaq?'&k='+encodeURIComponent(c.key):'');
-        const r=await A.shttp({url,method:body==null?'GET':'POST',headers:{'X-SL-Key':c.key,'Content-Type':raw?'application/octet-stream':'application/json'},b64:body==null?'':u8b64(body instanceof Uint8Array?body:te.encode(JSON.stringify(body))),timeout:quick?15000:60000});
+        const r=await A.shttp({url,method:body==null?'GET':'POST',headers:{'X-SL-Key':c.key,'Content-Type':ct||(raw?'application/octet-stream':'application/json')},b64:body==null?'':u8b64(body instanceof Uint8Array?body:te.encode(JSON.stringify(body))),timeout:quick?15000:60000});
         if(!r||!r.status)throw new Error((r&&r.error)||'sem resposta');
         if(r.status==401){if(!viaq){viaq=true;continue}const e=new Error('Chave incorreta. Gere um novo código de pareamento.');e.fatal=1;throw e}
         if(r.status>=500||r.status==403&&tries<1&&!quick)throw new Error('servidor respondeu '+r.status);
@@ -34,15 +36,24 @@ function makeSync(E){
       }catch(e){if(e.fatal||quick||++tries>3)throw e;await sleep(500*tries*tries)}
     }
   }
+  let altPut=false;
+  async function putChunk(h,off,size,r0){
+    const q='h='+h+'&off='+off+'&total='+size;
+    let r=altPut?await call('put',q+'&enc=b64',te.encode(u8b64(r0)),true,false,'text/plain'):await call('put',q,r0,true);
+    if(!altPut&&[403,406,415,501].indexOf(r.status)>=0){const r2=await call('put',q+'&enc=b64',te.encode(u8b64(r0)),true,false,'text/plain');if(r2.status==200||r2.status==409){altPut=true;r=r2}}
+    if(r.status==413&&chunk>300000){chunk=Math.max(262144,Math.floor(chunk/2));const e=new Error('retry');e.shrink=1;throw e}
+    return r;
+  }
   async function putBytes(h,u8){
     let off=0,reset=0;const size=u8.length;
     for(;;){
-      const len=Math.min(chunk,size-off),r=await call('put','h='+h+'&off='+off+'&total='+size,u8.subarray(off,off+len),true);
+      const len=Math.min(chunk,size-off);let r;try{r=await putChunk(h,off,size,u8.subarray(off,off+len))}catch(e){if(e.shrink)continue;throw e}
       if(r.status==409&&!reset){reset=1;const j=jsonOf(r);off=j&&j.have?j.have:0;continue}
-      if(r.status!=200)throw new Error('envio recusado ('+r.status+(r.status==422?': arquivo mudou durante o envio':'')+')');
+      if(r.status!=200)throw new Error('envio recusado ('+r.status+(r.status==422?': arquivo mudou durante o envio':r.status==403?': o servidor da Hostinger bloqueou o envio':'')+')');
       off+=len;if(off>=size)return;
     }
   }
+  async function pool(items,fn,n){let i=0,fail=null;const w=async()=>{while(i<items.length&&!fail){const x=items[i++];try{await fn(x)}catch(e){fail=fail||e}}};await Promise.all(Array.from({length:Math.min(n||4,items.length)||1},w));if(fail)throw fail}
   async function putBlobs(list,prog){
     const hs=[...new Set(list.map(x=>x.h))],nd=jsonOf(await call('need','',{hashes:hs}));if(!nd)throw new Error('resposta inválida do servidor');
     const need=new Set(nd.need||[]);let i=0;for(const x of list){if(!need.has(x.h))continue;need.delete(x.h);await putBytes(x.h,x.u8);i++;prog&&prog(i)}
@@ -53,9 +64,9 @@ function makeSync(E){
     let off=0,reset=0;
     for(;;){
       const len=Math.min(chunk,size-off),r0=len>0?b64u8((await A.sfRead({id,p:path,off,len})).b64):new Uint8Array(0);
-      const r=await call('put','h='+h+'&off='+off+'&total='+size,r0,true);
+      let r;try{r=await putChunk(h,off,size,r0)}catch(e){if(e.shrink)continue;throw e}
       if(r.status==409&&!reset){reset=1;const j=jsonOf(r);off=j&&j.have?j.have:0;continue}
-      if(r.status!=200)throw new Error('envio recusado ('+r.status+(r.status==422?': arquivo mudou durante o envio':'')+')');
+      if(r.status!=200)throw new Error('envio recusado ('+r.status+(r.status==422?': arquivo mudou durante o envio':r.status==403?': o servidor da Hostinger bloqueou o envio':'')+')');
       off+=len;if(off>=size)return;
     }
   }
@@ -72,7 +83,7 @@ function makeSync(E){
   async function push(p,r){
     const ls=await lstate(p),hs=[...new Set(Object.values(ls.man).map(e=>e[1]))];
     const nd=jsonOf(await call('need','',{hashes:hs}));if(!nd)throw new Error('resposta inválida do servidor');
-    for(const h of nd.need||[]){const path=Object.keys(ls.man).find(k=>ls.man[k][1]==h);await upBlob(p.id,path,ls.man[path][0],h)}
+    const byH={};Object.keys(ls.man).forEach(k=>{if(!byH[ls.man[k][1]])byH[ls.man[k][1]]=k});let dn=0;const tot=(nd.need||[]).length;await pool(nd.need||[],async h=>{const path=byH[h];await upBlob(p.id,path,ls.man[path][0],h);dn++;if(tot>1)status('Enviando "'+(p.name||'página')+'": '+dn+' de '+tot+' arquivos',1)},4);
     for(let t=0;t<2;t++){
       const rr=await call('commit','',{id:p.id,m:ls.m,f:ls.f,meta:metaOf(p),files:ls.man,ifm:r&&!r.del?r.m:'',iff:r&&!r.del?r.f:''});
       if(rr.status==200){const e=jsonOf(rr).entry;S.base[p.id]={l:{m:ls.m,f:ls.f},r:{m:e.m,f:e.f}};delete S.tomb[p.id];return'ok'}
@@ -85,7 +96,7 @@ function makeSync(E){
   async function pull(id,toId,r,tweak){
     const mr=await call('meta','id='+id),fr=await call('files','id='+id);if(mr.status!=200||fr.status!=200)throw new Error('não achei a página no servidor');
     const meta=jsonOf(mr),files=jsonOf(fr)||{},have={};((await A.sfList(toId))||[]).forEach(x=>have[x.p]=x.h);
-    for(const p of Object.keys(files)){const[size,h]=files[p];if(have[p]===h)continue;await downBlob(toId,p,size,h)}
+    const todo=Object.keys(files).filter(p=>have[p]!==files[p][1]);let dn=0;await pool(todo,async p=>{const[size,h]=files[p];await downBlob(toId,p,size,h);dn++;if(todo.length>1)status('Baixando "'+(meta.name||'página')+'": '+dn+' de '+todo.length+' arquivos',1)},4);
     for(const p of Object.keys(have))if(!files[p])await A.sfRm({id:toId,p});
     const pg=Object.assign({},meta,{id:toId});if(tweak)tweak(pg);
     const arr=E.getPages().slice(),i=arr.findIndex(x=>x.id==toId);if(i<0)arr.push(pg);else arr[i]=pg;E.setPages(arr);await A.save(arr);
@@ -98,6 +109,10 @@ function makeSync(E){
     const arr=E.getPages().slice();arr.push(pg);E.setPages(arr);await A.save(arr);return pg;
   }
   const t0=p=>Math.max(+p.updated||0,+p.pubAt||0);
+  const EMPTYF=sha1s(canon({}));
+  let lastPing=0,lastSet=0;
+  const rep=()=>S.rep||(S.rep={});
+  const mark=(id,name,state,msg)=>{const r=rep();r[id]={n:name||(r[id]&&r[id].n)||id,s:state,e:msg||'',at:Date.now()}};
   async function run(force){
     if(running){again=true;return}
     const c=cfgS();if(!c)return;
@@ -105,56 +120,67 @@ function makeSync(E){
     running=true;again=false;let changed=0,errs=0,n=0;
     try{
       status('Sincronizando...',1);
-      const pj=jsonOf(await call('ping','',null,false,true));if(pj&&pj.post)chunk=Math.max(262144,Math.min(1500000,Math.floor(pj.post*0.7)));
-      if(E.shareOut){try{const d=E.shareOut(),t=JSON.stringify(d);if(t!==S.sh){const r=await call('settings','',{data:d});if(r.status==200){S.sh=t;save()}}}catch(e){if(e.fatal)throw e}}
-      if(E.shareIn){try{const r=await call('settings');if(r.status==200){const j=jsonOf(r);if(j&&j.data&&j.rev!==S.shr){E.shareIn(j.data);S.shr=j.rev;save()}}}catch(e){if(e.fatal)throw e}}
+      if(force||Date.now()-lastPing>60000){const pj=jsonOf(await call('ping','',null,false,true));lastPing=Date.now();if(pj&&pj.post)chunk=Math.max(262144,Math.min(chunk,Math.floor(pj.post*0.7)))}
+      if(force||Date.now()-lastSet>30000){
+        lastSet=Date.now();
+        if(E.shareOut){try{const d=E.shareOut(),t=JSON.stringify(d);if(t!==S.sh){const r=await call('settings','',{data:d});if(r.status==200){S.sh=t;save()}}}catch(e){if(e.fatal)throw e}}
+        if(E.shareIn){try{const r=await call('settings');if(r.status==200){const j=jsonOf(r);if(j&&j.data&&j.rev!==S.shr){E.shareIn(j.data);S.shr=j.rev;save()}}}catch(e){if(e.fatal)throw e}}
+      }
       const ij=jsonOf(await call('index'));if(!ij||!ij.pages)throw new Error('resposta inválida do servidor');
       const R=ij.pages,busy=E.busy?E.busy():null,pg=E.getPages(),L={};
-      pg.forEach(p=>{if(p&&p.id&&(p.kind=='funnel'||!p.broken))L[p.id]=p});
+      pg.forEach(p=>{if(p&&p.id)L[p.id]=p});
       const ids=[...new Set([...Object.keys(L),...Object.keys(R),...Object.keys(S.tomb)])];
       let i=0;
       for(const id of ids){
-        i++;if(Array.isArray(busy)?busy.indexOf(id)>=0:id===busy)continue;
+        i++;const isBusy=Array.isArray(busy)?busy.indexOf(id)>=0:id===busy;
         const l=L[id],r=R[id]&&!R[id].del?R[id]:null,rdel=!!(R[id]&&R[id].del),b=S.base[id];
         try{
           status('Sincronizando ('+i+' de '+ids.length+')...',1);
-          if(l&&!r&&!rdel){const x=await push(l);if(x=='ok')changed++;continue}
+          if(l&&!r&&!rdel){const x=await push(l);if(x=='ok')changed++;mark(id,l.name,'ok');continue}
           if(!l&&r){
-            if(S.tomb[id]&&b&&r.m==b.r.m&&r.f==b.r.f){const x=await call('del','',{id,ifm:r.m,iff:r.f});if(x.status==200){delete S.tomb[id];delete S.base[id];changed++}else again=true;continue}
-            status('Baixando página '+i+' de '+ids.length+'...',1);await pull(id,id,r);changed++;n++;E.onChange&&E.onChange();continue}
+            if(S.tomb[id]&&b&&r.m==b.r.m&&r.f==b.r.f){const x=await call('del','',{id,ifm:r.m,iff:r.f});if(x.status==200){delete S.tomb[id];delete S.base[id];delete rep()[id];changed++}else again=true;continue}
+            status('Baixando página '+i+' de '+ids.length+'...',1);const pgn=await pull(id,id,r);changed++;n++;mark(id,pgn&&pgn.name,'ok');E.onChange&&E.onChange();continue}
           if(!l&&!r){delete S.tomb[id];if(rdel)delete S.base[id];continue}
-          if(l&&rdel){const ls=await lstate(l);if(b&&ls.m==b.l.m&&ls.f==b.l.f){await A.mdel(id);const arr=E.getPages().filter(x=>x.id!=id);E.setPages(arr);await A.save(arr);delete S.base[id];changed++;E.onChange&&E.onChange()}else{await push(l,null);changed++}continue}
+          if(l&&rdel){if(isBusy)continue;const ls=await lstate(l);if(b&&ls.m==b.l.m&&ls.f==b.l.f){await A.mdel(id);const arr=E.getPages().filter(x=>x.id!=id);E.setPages(arr);await A.save(arr);delete S.base[id];delete rep()[id];changed++;E.onChange&&E.onChange()}else{await push(l,null);changed++}continue}
           if(l&&r){
             const ls=await lstate(l);
-            if(!b){if(ls.m==r.m&&ls.f==r.f){S.base[id]={l:{m:ls.m,f:ls.f},r:{m:r.m,f:r.f}};continue}}
+            if(l.kind!='funnel'&&!Object.keys(ls.man).length&&r.f!=EMPTYF){
+              if(isBusy)continue;
+              await pull(id,id,r);changed++;n++;mark(id,l.name,'ok','Estava sem arquivos neste aparelho; recuperei do ponto de encontro.');E.onChange&&E.onChange();continue}
+            if(!b){if(ls.m==r.m&&ls.f==r.f){S.base[id]={l:{m:ls.m,f:ls.f},r:{m:r.m,f:r.f}};mark(id,l.name,'ok');continue}}
             const lc=!b||ls.m!=b.l.m||ls.f!=b.l.f,rc=!b||r.m!=b.r.m||r.f!=b.r.f;
-            if(lc&&!rc){const x=await push(l,r);if(x=='ok')changed++}
-            else if(!lc&&rc){await pull(id,id,r);changed++;n++;E.onChange&&E.onChange()}
+            if(isBusy&&!(lc&&!rc)){mark(id,l.name,'busy','Aberta no editor: as mudanças do outro aparelho chegam quando você sair dela.');continue}
+            if(lc&&!rc){const x=await push(l,r);if(x=='ok')changed++;mark(id,l.name,'ok')}
+            else if(!lc&&rc){const pgn=await pull(id,id,r);changed++;n++;mark(id,pgn&&pgn.name,'ok');E.onChange&&E.onChange()}
             else if(lc&&rc){
               const rm=jsonOf(await call('meta','id='+id))||{};
               if(t0(rm)>t0(l)){await dupLocal(l,' (versão deste aparelho)');await pull(id,id,r);E.onChange&&E.onChange()}
               else{const id2=E.uid();await pull(id,id2,r,x=>{x.name=(x.name||'Página')+' (versão do outro aparelho)';x.pub=false;x.url='';x.pubAt=0;x.htDir='';x.updated=Date.now()});await push(l,r);E.onChange&&E.onChange()}
-              changed++;
-            }
+              mark(id,l.name,'ok','Editada nos dois aparelhos: a mais recente ficou e a outra virou uma cópia.');changed++;
+            }else mark(id,l.name,'ok');
           }
-        }catch(e){if(e.fatal)throw e;errs++;S.err='Falha em uma página: '+String(e.message||e).slice(0,140)}
+        }catch(e){
+          if(e.fatal)throw e;errs++;let nm=l&&l.name;if(!nm){try{const mj=jsonOf(await call('meta','id='+id,null,false,true));nm=mj&&mj.name}catch{}}
+          const msg=String(e.message||e).slice(0,160);mark(id,nm,'err',msg);S.err='Problema em "'+(nm||id)+'": '+msg}
       }
       if(!errs)S.err='';
       S.last=Date.now();S.lastN=changed;save();
       status('',0);
     }catch(e){S.err=String(e.message||e).slice(0,160);save();status('',0)}
-    finally{running=false;if(again){again=false;kick(4000)}}
+    finally{running=false;if(again){again=false;kick(1500)}}
   }
   function kick(ms){if(!cfgS())return;clearTimeout(kt);kt=setTimeout(()=>run(false),ms==null?1500:ms)}
-  function start(){clearInterval(timer);if(!cfgS())return;timer=setInterval(()=>kick(0),45000);kick(2500)}
+  function start(){clearInterval(timer);if(!cfgS())return;timer=setInterval(()=>kick(0),10000);kick(1500)}
   function stop(){clearInterval(timer);timer=null;clearTimeout(kt)}
+  function flush(){if(cfgS())return run(true)}
   function tomb(id){if(!cfgS())return;S.tomb[id]=Date.now();save();kick(1500)}
   function decode(code){try{let s=String(code||'').trim();if(!s.startsWith('SL1.'))return null;s=s.slice(4).replace(/-/g,'+').replace(/_/g,'/');while(s.length%4)s+='=';const j=JSON.parse(td.decode(b64u8(s)));return j&&j.u&&j.k?{url:j.u,key:j.k}:null}catch{return null}}
   function encode(c){const s=btoa(String.fromCharCode.apply(null,te.encode(JSON.stringify({u:c.url,k:c.key})))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');return'SL1.'+s}
   async function test(){try{const r=await call('ping','',null,false,true);if(r.status==200){const j=jsonOf(r);return j&&j.ok?{ok:1,post:j.post,v:j.v||1,pub:j.pub}:{ok:0,error:'o endereço não respondeu como o servidor de sincronização'}}return{ok:0,error:'o servidor respondeu '+r.status+(r.status==404?' (arquivo não encontrado)':'')}}catch(e){return{ok:0,error:String(e.message||e)}}}
-  function info(){return{last:S.last,err:S.err,n:S.lastN,busy:running,on:!!cfgS()}}
+  function info(){return{last:S.last,err:S.err,n:S.lastN,busy:running,on:!!cfgS(),txt:st.txt}}
+  function report(){const r=rep(),pg={};E.getPages().forEach(p=>pg[p.id]=p);return Object.keys(r).map(id=>({id,name:(pg[id]&&pg[id].name)||r[id].n,s:r[id].s,e:r[id].e,at:r[id].at,funil:!!(pg[id]&&pg[id].kind=='funnel')})).sort((a,b)=>(a.s=='err'?0:1)-(b.s=='err'?0:1)||String(a.name).localeCompare(b.name))}
   function reset(){S={base:{},tomb:{},last:0,err:'',lastN:0};save()}
-  return{run,kick,start,stop,tomb,decode,encode,test,info,reset,putBlobs,hubJson,_S:()=>S,_sha1:sha1s};
+  return{run,kick,start,stop,flush,report,tomb,decode,encode,test,info,reset,putBlobs,hubJson,_S:()=>S,_sha1:sha1s};
 }
 if(typeof module!='undefined')module.exports=makeSync;
 
@@ -163,15 +189,20 @@ if(api.mobile)SYNCO.shareIn=d=>{cfg.doms=Array.isArray(d.doms)?d.doms:[];if(d.di
 else SYNCO.shareOut=()=>({doms:domsList().map(x=>({h:x.h,dir:x.dir})),dir:(cfg.ht||{}).dir||''});
 const SYNC=makeSync(SYNCO);window.SLHUB={putBlobs:SYNC.putBlobs,hubJson:SYNC.hubJson};
 const slp=t=>new Promise(r=>setTimeout(r,t));
-function syncTxt(){const s=cfg.sync;if(!s||!s.on)return'';const i=SYNC.info();if(i.busy)return'☁ Sincronizando...';if(i.err)return'⚠ Sem sincronizar';if(!i.last)return'☁ Conectando...';const m=Math.round((Date.now()-i.last)/60000);return'☁ Sincronizado'+(m<1?' agora':' há '+m+' min')}
+function syncTxt(){const s=cfg.sync;if(!s||!s.on)return'';const i=SYNC.info();if(i.busy)return'☁ '+(i.txt||'Sincronizando...');if(i.err)return'⚠ Problema na sincronização (toque)';if(!i.last)return'☁ Conectando...';const m=Math.round((Date.now()-i.last)/60000);return'☁ Sincronizado'+(m<1?' agora':' há '+m+' min')}
 function syncLong(){const s=cfg.sync;if(!s||!s.on)return'';const i=SYNC.info();if(i.busy)return'Sincronizando agora...';if(i.err)return'Problema: '+i.err+' Tenta de novo sozinho.';if(!i.last)return'Conectando...';return'Última sincronização: '+new Date(i.last).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+(i.n?' · '+i.n+' alteração'+(i.n>1?'ões':'')+' recebida'+(i.n>1?'s':'')+' ou enviada'+(i.n>1?'s':''):' · tudo igual nos dois aparelhos')}
-function syncUi(){const e=$('#syncs');if(e){e.textContent=syncTxt();e.title=SYNC.info().err||''}const t=$('#syst');if(t)t.textContent=syncLong()}
+function syncRows(){return SYNC.report()}
+function syncRepHtml(){const r=syncRows();if(!r.length)return'<p class=mut style="margin:6px 0 0;font-size:12px">Ainda não sincronizou nenhuma página.</p>';const ic={ok:'✓',err:'⚠',busy:'✎'};return'<div id=syrep style="margin:8px 0 0;font-size:12px;max-height:260px;overflow:auto">'+r.map(x=>'<div style="padding:5px 0;border-top:1px solid rgba(255,255,255,.06);'+(x.s=='err'?'color:#fca5a5':'')+'">'+ic[x.s]+' <b>'+esc(x.name||x.id)+'</b>'+(x.funil?' <span class=mut>(funil)</span>':'')+(x.e?'<div class=mut style="font-size:11px;margin-top:2px">'+esc(x.e)+'</div>':'')+'</div>').join('')+'</div>'}
+function syncRepText(){return SYNC.report().map(x=>(x.s=='err'?'ERRO ':x.s=='busy'?'ABERTA ':'OK ')+(x.name||x.id)+' ['+x.id+']'+(x.e?' - '+x.e:'')).join('\n')+'\n'+(SYNC.info().err||'')}
+function syncUi(){const e=$('#syncs');if(e){e.textContent=syncTxt();e.title=SYNC.info().err||''}const t=$('#syst');if(t)t.textContent=syncLong();const g=$('#syrepw');if(g)g.innerHTML=syncRepHtml()}
+function syncCopyRep(){try{navigator.clipboard.writeText(syncRepText()).then(()=>toast('Relatório copiado'),()=>toast('Não consegui copiar'))}catch{toast('Não consegui copiar')}}
+function syncRepModal(){modal('Sincronização','<p class=mut style="margin-top:0">'+esc(SYNC.info().err||'Tudo certo.')+'</p>'+syncRepHtml(),[['Copiar relatório',syncCopyRep],['Fechar',null,'b']])}
 function syncBlock(){const s=cfg.sync||{},on=!!(s.on&&s.url&&s.key),mob=!!api.mobile;let h='<div class="blk box" style="margin-top:14px"><h4>Sincronização entre aparelhos</h4>';
 if(mob){if(!on)h+='<p class=mut style="margin:0 0 8px;font-size:12px">Para ver no celular tudo o que está no computador: no computador, abra Configurações &gt; Sincronização entre aparelhos, ative e toque em <b>Copiar código do celular</b>. Depois cole o código aqui.</p><label>Código do computador</label><input id=syc placeholder="Cole o código aqui" autocapitalize=off autocomplete=off><div class=row><button class=b onclick=syncPair()>Conectar</button></div>';
-else h+='<p class=mut id=syst style="margin:0 0 8px;font-size:12px">'+esc(syncLong())+'</p><div class=row><button class=b2 onclick=syncNow()>Sincronizar agora</button><span class=sp></span><button class=b2 onclick=syncOff()>Desconectar</button></div>'}
+else h+='<p class=mut id=syst style="margin:0 0 8px;font-size:12px">'+esc(syncLong())+'</p><div class=row><button class=b2 onclick=syncNow()>Sincronizar agora</button><button class=b2 onclick=syncCopyRep()>Copiar relatório</button><span class=sp></span><button class=b2 onclick=syncOff()>Desconectar</button></div><div id=syrepw>'+syncRepHtml()+'</div>'}
 else{if(!s.url){const l=domsList();h+='<p class=mut style="margin:0 0 8px;font-size:12px">Mantém as suas páginas e funis iguais no computador e no celular. Usa a sua própria Hostinger como ponto de encontro (nada de conta nova). Escolha o domínio onde fica o ponto de encontro:</p>'+(l.length?'<select id=sydm>'+l.map(x=>'<option>'+esc(x.h)+'</option>').join('')+'</select><div class=row><button class=b id=syb onclick=syncOn()>Ativar sincronização</button></div>':'<p class=mut style="font-size:12px">Antes, adicione um domínio em “Domínios vinculados” (acima).</p>')}
 else if(!on)h+='<p class=mut style="margin:0 0 8px;font-size:12px">Desativada neste aparelho. Ao reativar, tudo volta a ser comparado com o celular.</p><div class=row><button class=b onclick=syncAgain()>Reativar</button></div>';
-else h+='<p class=mut id=syst style="margin:0 0 8px;font-size:12px">'+esc(syncLong())+'</p><p class=mut style="margin:0 0 8px;font-size:12px">Ponto de encontro: <code>'+esc(s.dom||'')+'</code>. O código do celular dá acesso a todas as suas páginas: use só nos seus aparelhos e não compartilhe.</p><div class=row><button class=b2 onclick=syncNow()>Sincronizar agora</button><button class=b2 onclick=syncCopy()>Copiar código do celular</button><span class=sp></span><button class=b2 onclick=syncOff()>Desativar</button></div>'}
+else h+='<p class=mut id=syst style="margin:0 0 8px;font-size:12px">'+esc(syncLong())+'</p><p class=mut style="margin:0 0 8px;font-size:12px">Ponto de encontro: <code>'+esc(s.dom||'')+'</code>. O código do celular dá acesso a todas as suas páginas: use só nos seus aparelhos e não compartilhe.</p><div class=row><button class=b2 onclick=syncNow()>Sincronizar agora</button><button class=b2 onclick=syncCopy()>Copiar código do celular</button><button class=b2 onclick=syncCopyRep()>Copiar relatório</button><span class=sp></span><button class=b2 onclick=syncOff()>Desativar</button></div><div id=syrepw>'+syncRepHtml()+'</div>'}
 return h+'</div>'}
 function syncRnd(n){const a=new Uint8Array(n);crypto.getRandomValues(a);return[...a].map(x=>('0'+x.toString(16)).slice(-2)).join('')}
 async function syncOn(){if(!htOk())return need('Falta configurar a Hostinger','A sincronização usa a sua Hostinger como ponto de encontro. Preencha servidor, usuário, senha e pasta no bloco da Hostinger e salve.','Entendi');
@@ -184,10 +215,11 @@ if(!t.ok){cfg.sync.on=0;sc();conf();return fail('O servidor foi enviado, mas nã
 SYNC.reset();SYNC.start();conf();toast('Sincronização ativada. Copie o código do celular.')}
 function syncAgain(){cfg.sync.on=1;sc();SYNC.reset();SYNC.start();conf()}
 function syncOff(){cfg.sync.on=0;sc();SYNC.stop();conf();toast('Sincronização desligada neste aparelho')}
-function syncNow(){toast('Sincronizando...');SYNC.run(true).then(()=>{syncUi();const e=SYNC.info().err;toast(e?'Problema: '+e:'Pronto')})}
+function syncNow(){if(!(cfg.sync&&cfg.sync.on))return;toast('Sincronizando...');SYNC.run(true).then(()=>{syncUi();const e=SYNC.info().err;if(e)syncRepModal();else toast('Pronto: tudo sincronizado')})}
 function syncCopy(){try{navigator.clipboard.writeText(SYNC.encode(cfg.sync)).then(()=>toast('Código copiado. Cole no celular e não compartilhe com ninguém.'),()=>toast('Não consegui copiar'))}catch{toast('Não consegui copiar')}}
 async function syncPair(){const c=SYNC.decode(($('#syc')||{}).value);if(!c)return toast('Código inválido. Copie de novo no computador.');cfg.sync={on:1,url:c.url,key:c.key};sc();const t=await SYNC.test();if(!t.ok){cfg.sync.on=0;sc();return fail('Não consegui conectar',t.error||'sem resposta')}SYNC.reset();SYNC.start();conf();toast('Conectado. Baixando suas páginas...')}
-async function syncUpgrade(){const s=cfg.sync;if(api.mobile||!s||!s.on||!s.folder||!s.dom||!htOk())return;const t=await SYNC.test();if(!t.ok||(t.v||1)>=2)return;const d=domsList().find(x=>x.h==s.dom);if(!d)return;const r=await api.sfInstall({h:cfg.ht,dir:d.dir,folder:s.folder,key:s.key});toast(r.ok?'Ponto de encontro atualizado (agora o celular pode publicar)':'Não consegui atualizar o ponto de encontro: '+r.error)}
+async function syncUpgrade(){const s=cfg.sync;if(api.mobile||!s||!s.on||!s.folder||!s.dom||!htOk())return;const t=await SYNC.test();if(!t.ok||(t.v||1)>=3)return;const d=domsList().find(x=>x.h==s.dom);if(!d)return;const r=await api.sfInstall({h:cfg.ht,dir:d.dir,folder:s.folder,key:s.key});toast(r.ok?'Ponto de encontro atualizado':'Não consegui atualizar o ponto de encontro: '+r.error)}
+document.addEventListener('visibilitychange',()=>{if(document.hidden)SYNC.flush();else SYNC.kick(300)});addEventListener('pagehide',()=>{SYNC.flush()});addEventListener('focus',()=>SYNC.kick(300));
 
 const DV={m:['Celular',390],t:['Tablet',768],d:['PC','100%']},fw=()=>{const w=DV[dev][1];return typeof w=='number'?w+'px':w};
 const isAp=d=>/^[^.]+(\.(com|net|org)\.br|\.[a-z]{2,})$/i.test(d.replace(/^www\./i,'')),cp=t=>{navigator.clipboard.writeText(t);toast('Copiado')};
@@ -196,8 +228,8 @@ function askC(t,msg,yes,danger){return new Promise(res=>{const o=document.create
 function modal(t,b,acts){const o=document.createElement('div');o.className='ov';o.innerHTML=`<div class=md><h3>${t}</h3>${b}<div class=row>${acts.map((a,i)=>`<button class="${a[2]||'b2'}" data-i=${i}>${a[0]}</button>`).join('')}</div></div>`;document.body.append(o);o.onclick=e=>{if(e.target==o)o.remove();const i=e.target.dataset&&e.target.dataset.i;if(i!=null){o.remove();acts[i][1]&&acts[i][1]()}};return o}
 const need=(t,m,b,f)=>modal(t,`<p class=mut>${m}</p>`,[['Agora não'],[b,f,'b']]),fail=(t,m)=>modal(t,`<p class="mut err">${esc(m)}</p>`,[['Fechar',null,'b']]);
 function go(v){view=v;render()}
-function render(){if(view=='list')SYNC.kick(1200);$('#side').style.display=(view=='edit'||view=='fmap')?'none':'';document.querySelectorAll('.nav[data-v]').forEach(n=>n.classList.toggle('on',n.dataset.v==(view=='fmap'?'fnl':view)));view=='list'?list():view=='dash'?dash():view=='cfg'?conf():view=='fnl'?fnList():view=='fmap'?fnMap():editor()}
-function list(){$('#main').innerHTML=`<div class=pad><div class=hero><div class=sub>Páginas <span id=syncs class=mut style="margin-left:8px;text-transform:none;letter-spacing:0">${syncTxt()}</span></div><h1>Suas páginas</h1><p class=mut>Cole o endereço de qualquer página de vendas, clone em segundos e edite do seu jeito.</p><div class=cloner><span style="font-size:20px">🔗</span><input id=cu placeholder="Cole aqui o endereço da página que quer clonar" onkeydown="if(event.key=='Enter')run()"><button class=b onclick=run()>Clonar agora</button><button class=b2 title="Abrir um arquivo .html que você já tem" onclick="$('#hf').click()">Importar HTML</button><input id=hf type=file accept=".html,.htm" hidden onchange=impHtml(this)></div></div><div class=row><input id=q placeholder="Buscar páginas..." oninput=cards() style="max-width:300px"></div><div id=gr class=grid></div></div>`;cards()}
+function render(){if(view=='list')SYNC.kick(300);$('#side').style.display=(view=='edit'||view=='fmap')?'none':'';document.querySelectorAll('.nav[data-v]').forEach(n=>n.classList.toggle('on',n.dataset.v==(view=='fmap'?'fnl':view)));view=='list'?list():view=='dash'?dash():view=='cfg'?conf():view=='fnl'?fnList():view=='fmap'?fnMap():editor()}
+function list(){$('#main').innerHTML=`<div class=pad><div class=hero><div class=sub>Páginas <span id=syncs class=mut onclick=syncNow() style="margin-left:8px;text-transform:none;letter-spacing:0;cursor:pointer">${syncTxt()}</span></div><h1>Suas páginas</h1><p class=mut>Cole o endereço de qualquer página de vendas, clone em segundos e edite do seu jeito.</p><div class=cloner><span style="font-size:20px">🔗</span><input id=cu placeholder="Cole aqui o endereço da página que quer clonar" onkeydown="if(event.key=='Enter')run()"><button class=b onclick=run()>Clonar agora</button><button class=b2 title="Abrir um arquivo .html que você já tem" onclick="$('#hf').click()">Importar HTML</button><input id=hf type=file accept=".html,.htm" hidden onchange=impHtml(this)></div></div><div class=row><input id=q placeholder="Buscar páginas..." oninput=cards() style="max-width:300px"></div><div id=gr class=grid></div></div>`;cards()}
 function cards(){const q=$('#q').value.toLowerCase(),l=pages.filter(p=>!p.kind&&p.name.toLowerCase().includes(q)).sort((a,b)=>b.updated-a.updated);
 $('#gr').innerHTML=l.length?l.map(p=>`<div class=card><div class=pv onclick="abrir('${p.id}')">${p.thumb?`<img src="/m/${p.id}/_sl_thumb.jpg?v=${p.updated}" loading=lazy decoding=async>`:''}</div><div class=ci><b>${esc(p.name)}</b><span class="tag ${p.pub?'ok':''}">${p.broken?'Recuperar':p.pub?'Publicada':'Rascunho'}</span><span class=sp></span><button class=ic title="Duplicar página" onclick="dupPage('${p.id}')">⧉</button><button class=ic title=Excluir onclick="del('${p.id}')">🗑</button></div>${cardAddr(p)}</div>`).join(''):`<div class=empty style="grid-column:1/-1"><p>Nenhuma página ainda. Cole um endereço acima para começar.</p></div>`}
 async function del(id){if(!await askC('Excluir esta página?','Ela some da lista e não dá para recuperar.','Excluir',1))return;api.mdel(id);SYNC.tomb(id);pages=pages.filter(p=>p.id!=id);sv();cards()}
@@ -554,7 +586,7 @@ function dUtm(){const t='utm_source=FB&utm_medium={{adset.name}}|{{adset.id}}&ut
 async function dTest(k){const e=$('#'+k+'r');e.textContent='Testando…';const v=k=='ck'?{id:$('#cki').value,sec:$('#cks').value}:{tok:$('#mtt').value,acct:$('#mta').value,ver:$('#mtv').value},r=await api.dtest({kind:k,ck:k=='ck'?v:null,mt:k=='mt'?v:null});e.textContent=r.ok?'✔ '+r.info:'✖ '+r.error;if(r.ok&&r.cur&&r.cur!='BRL')e.textContent+=' · Atenção: a conta usa '+r.cur+' e o painel soma como reais.'}
 function dSave(k){if(k=='ck')cfg.ck={id:$('#cki').value.trim(),sec:$('#cks').value.trim()};else if(k=='mt')cfg.mt={tok:$('#mtt').value.trim(),acct:$('#mta').value.trim(),ver:$('#mtv').value.trim()};else cfg.dc={tax:+$('#dct').value||0,cost:+$('#dcc').value||0,fees:$('#dcf').checked?1:0};sc();dd.res=null;dd.raw=null;toast('Salvo')}
 
-function conf(){$('#main').innerHTML=`<div class=pad><div class=sub>Configurações · Shark Lab v47</div><h1>Conexão</h1><p class=mut>O token fica salvo só neste aparelho.</p><div class="blk box"><h4>Netlify (publicação)</h4><label>Token de acesso</label><div class=cp2><input id=nl type=password value="${esc(cfg.nl||'')}"><button class=b2 onclick=tst()>Testar</button></div><div class=mut id=nlr></div><div class=row><button class=b onclick="cfg.nl=$('#nl').value.trim();sc();toast('Salvo')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Hostinger</h4><p class=mut style="margin:0;font-size:12px">${(cfg.sync&&cfg.sync.on&&cfg.ht&&cfg.ht.hub)?"Publicação pronta: o celular publica pelo ponto de encontro da sincronização, na sua Hostinger. Nada para configurar aqui. Pasta do site: <code>"+esc(cfg.ht.dir)+"</code>.":"Para publicar pelo celular, conecte a sincronização abaixo. O celular usa a configuração da Hostinger do computador, sem pedir a senha do FTP."}</p></div>${domBlock()}${syncBlock()}<div class="blk box" style="margin-top:14px"><h4>Claude (assistente de IA)</h4><label>Chave da API da Anthropic</label><div class=cp2><input id=ak type=password placeholder="sk-ant-..." value="${esc(cfg.ak||'')}"><button class=b2 onclick=tai()>Testar</button></div><div class=mut id=air></div><label>Modelo</label><select id=am>${[['claude-sonnet-5-5','Sonnet 5.5 — equilibrado'],['claude-opus-5-5','Opus 5.5 — mais capaz'],['claude-haiku-5-5','Haiku 5.5 — mais rápido']].map(x=>`<option value=${x[0]} ${(cfg.am||'claude-sonnet-5-5')==x[0]?'selected':''}>${x[1]}</option>`).join('')}</select><p class=mut style="font-size:12px">Crie a chave em console.anthropic.com. O uso é cobrado pela Anthropic, separado da assinatura do Claude.</p><div class=row><button class=b onclick="cfg.ak=$('#ak').value.trim();cfg.am=$('#am').value;sc();toast('Salvo')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Cakto (vendas)</h4><p class=mut style="margin:0;font-size:12px">Na Cakto: Integrações › Cakto API › Criar Chave de API. Marque a permissão de leitura de pedidos (<b>read orders</b>) e copie o client_id e o client_secret (o secret só aparece uma vez).</p><label>client_id</label><input id=cki value="${esc((cfg.ck||{}).id||'')}"><label>client_secret</label><input id=cks type=password value="${esc((cfg.ck||{}).sec||'')}"><div class=mut id=ckr></div><div class=row><button class=b2 onclick="dTest('ck')">Testar</button><span class=sp></span><button class=b onclick="dSave('ck')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Meta Ads (gastos)</h4><p class=mut style="margin:0;font-size:12px">Precisa de um token com permissão <b>ads_read</b> (de preferência de um usuário do sistema no Business Manager, que não expira) e o ID da conta de anúncios (só números). Várias contas: separe por vírgula.</p><label>Token de acesso</label><input id=mtt type=password value="${esc((cfg.mt||{}).tok||'')}"><label>ID da conta de anúncios</label><input id=mta placeholder="1234567890" value="${esc((cfg.mt||{}).acct||'')}"><label>Versão da API (opcional)</label><input id=mtv placeholder="deixe em branco" value="${esc((cfg.mt||{}).ver||'')}"><div class=mut id=mtr></div><div class=row><button class=b2 onclick="dTest('mt')">Testar</button><span class=sp></span><button class=b onclick="dSave('mt')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Custos do dashboard</h4><label>Imposto sobre o faturamento (%)</label><input id=dct type=number min=0 step=0.1 value="${dcfg().tax}"><label>Custo do produto por venda (R$)</label><input id=dcc type=number min=0 step=0.01 value="${dcfg().cost}"><label style="margin-top:10px"><input type=checkbox id=dcf ${dcfg().fees?'checked':''}> Descontar as taxas da Cakto do lucro</label><div class=row><button class=b onclick="dSave('dc')">Salvar</button></div></div></div>`}
+function conf(){$('#main').innerHTML=`<div class=pad><div class=sub>Configurações · Shark Lab v48</div><h1>Conexão</h1><p class=mut>O token fica salvo só neste aparelho.</p><div class="blk box"><h4>Netlify (publicação)</h4><label>Token de acesso</label><div class=cp2><input id=nl type=password value="${esc(cfg.nl||'')}"><button class=b2 onclick=tst()>Testar</button></div><div class=mut id=nlr></div><div class=row><button class=b onclick="cfg.nl=$('#nl').value.trim();sc();toast('Salvo')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Hostinger</h4><p class=mut style="margin:0;font-size:12px">${(cfg.sync&&cfg.sync.on&&cfg.ht&&cfg.ht.hub)?"Publicação pronta: o celular publica pelo ponto de encontro da sincronização, na sua Hostinger. Nada para configurar aqui. Pasta do site: <code>"+esc(cfg.ht.dir)+"</code>.":"Para publicar pelo celular, conecte a sincronização abaixo. O celular usa a configuração da Hostinger do computador, sem pedir a senha do FTP."}</p></div>${domBlock()}${syncBlock()}<div class="blk box" style="margin-top:14px"><h4>Claude (assistente de IA)</h4><label>Chave da API da Anthropic</label><div class=cp2><input id=ak type=password placeholder="sk-ant-..." value="${esc(cfg.ak||'')}"><button class=b2 onclick=tai()>Testar</button></div><div class=mut id=air></div><label>Modelo</label><select id=am>${[['claude-sonnet-5-5','Sonnet 5.5 — equilibrado'],['claude-opus-5-5','Opus 5.5 — mais capaz'],['claude-haiku-5-5','Haiku 5.5 — mais rápido']].map(x=>`<option value=${x[0]} ${(cfg.am||'claude-sonnet-5-5')==x[0]?'selected':''}>${x[1]}</option>`).join('')}</select><p class=mut style="font-size:12px">Crie a chave em console.anthropic.com. O uso é cobrado pela Anthropic, separado da assinatura do Claude.</p><div class=row><button class=b onclick="cfg.ak=$('#ak').value.trim();cfg.am=$('#am').value;sc();toast('Salvo')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Cakto (vendas)</h4><p class=mut style="margin:0;font-size:12px">Na Cakto: Integrações › Cakto API › Criar Chave de API. Marque a permissão de leitura de pedidos (<b>read orders</b>) e copie o client_id e o client_secret (o secret só aparece uma vez).</p><label>client_id</label><input id=cki value="${esc((cfg.ck||{}).id||'')}"><label>client_secret</label><input id=cks type=password value="${esc((cfg.ck||{}).sec||'')}"><div class=mut id=ckr></div><div class=row><button class=b2 onclick="dTest('ck')">Testar</button><span class=sp></span><button class=b onclick="dSave('ck')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Meta Ads (gastos)</h4><p class=mut style="margin:0;font-size:12px">Precisa de um token com permissão <b>ads_read</b> (de preferência de um usuário do sistema no Business Manager, que não expira) e o ID da conta de anúncios (só números). Várias contas: separe por vírgula.</p><label>Token de acesso</label><input id=mtt type=password value="${esc((cfg.mt||{}).tok||'')}"><label>ID da conta de anúncios</label><input id=mta placeholder="1234567890" value="${esc((cfg.mt||{}).acct||'')}"><label>Versão da API (opcional)</label><input id=mtv placeholder="deixe em branco" value="${esc((cfg.mt||{}).ver||'')}"><div class=mut id=mtr></div><div class=row><button class=b2 onclick="dTest('mt')">Testar</button><span class=sp></span><button class=b onclick="dSave('mt')">Salvar</button></div></div><div class="blk box" style="margin-top:14px"><h4>Custos do dashboard</h4><label>Imposto sobre o faturamento (%)</label><input id=dct type=number min=0 step=0.1 value="${dcfg().tax}"><label>Custo do produto por venda (R$)</label><input id=dcc type=number min=0 step=0.01 value="${dcfg().cost}"><label style="margin-top:10px"><input type=checkbox id=dcf ${dcfg().fees?'checked':''}> Descontar as taxas da Cakto do lucro</label><div class=row><button class=b onclick="dSave('dc')">Salvar</button></div></div></div>`}
 async function tst(){const v=$('#nl').value.trim(),e=$('#nlr');if(!v){e.textContent='Cole o token primeiro';return}e.textContent='Testando...';const r=await api.test({v});e.textContent=r.ok?'✔ Conectado':'✖ Não funcionou'+(r.status?' ('+r.status+')':'')}
 addEventListener('beforeunload',e=>{api.saveSync(pages);if(view=='edit'&&dirty())e.returnValue=false});
 {const d=api.loadSync();if(Array.isArray(d))pages=d;render();if(cfg.sync&&cfg.sync.on){SYNC.start();syncUpgrade()}const sp=$('#splash');if(sp)setTimeout(()=>{sp.classList.add('out');setTimeout(()=>sp.remove(),450)},Math.max(0,1400-performance.now()))}
