@@ -146,7 +146,7 @@
       if (r.status == 422 && r.json && r.json.error == 'faltam') continue; break;
     }
     if (r.status == 404) return { ok: false, error: 'O ponto de encontro na Hostinger está desatualizado. Abra o Shark Lab no computador (v48 ou mais novo) e deixe a sincronização rodar uma vez.' };
-    const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; if (/já existem neste domínio/.test(j.error || '')) return { ok: false, error: 'O ponto de encontro na Hostinger ainda é de uma versão antiga e não consegue publicar esta página. Abra o Shark Lab v60 no computador (ele atualiza o ponto de encontro sozinho em alguns segundos) e publique de novo.' }; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
+    const j = r.json || {}; if (r.status != 200 || !j.ok) { if (j.conflict || j.noDir) return j; if (/já existem neste domínio/.test(j.error || '')) return { ok: false, error: 'O ponto de encontro na Hostinger ainda é de uma versão antiga e não consegue publicar esta página. Abra o Shark Lab (versão mais recente) no computador (ele atualiza o ponto de encontro sozinho em alguns segundos) e publique de novo.' }; return { ok: false, error: j.error || ('O servidor respondeu ' + r.status) } }
     const live = domain ? await liveCheck(domain, tok, liveGap) : null;
     return { ok: true, n: j.n, live, speed: spr, kept: (j.kept || []).filter(p => !HASHED(p)).length };
   }
