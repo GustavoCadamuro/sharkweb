@@ -63,7 +63,8 @@ let b=Buffer.from(f.b.body,f.b.base64Encoded?'base64':'utf8');if(p=='/index.html
 OUT[p]=b}
 if(!doc)return{ok:false,error:'Não consegui capturar a página. Confira o endereço.'};
 let cfr=null;try{const U8={};for(const p in OUT)U8[p]=new Uint8Array(OUT[p]);cfr=await makeCloneFix({get:async u=>{try{const r=await net.fetch(u,{headers:{'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',Referer:origin+'/'},signal:AbortSignal.timeout(25000)});return{status:r.status,u8:new Uint8Array(await r.arrayBuffer()),type:r.headers.get('content-type')}}catch{return null}}}).complete(U8,fin.href,{extra});for(const p in U8)OUT[p]=Buffer.from(U8[p])}catch(e){cfr={error:String(e&&e.message||e)}}
-for(const p in OUT){const fp=path.join(dir,p);fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp,OUT[p]);n++}
+{const DIRS=new Set();for(const p in OUT){const a=p.split('/');for(let i=2;i<a.length;i++)DIRS.add(a.slice(0,i).join('/'))}
+for(let p in OUT){let q=p;if(DIRS.has(p)){q=p+(/^\s*[<]/.test(OUT[p].slice(0,40).toString())?'/index.html':'/index.json')}try{const fp=path.join(dir,q);fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp,OUT[p]);n++}catch{}}}
 if(th)fs.writeFileSync(path.join(dir,'_sl_thumb.jpg'),Buffer.from(th,'base64'));let hr=null;try{hr=await healMirror(id,fin.href,{ms:12000})}catch{}return{ok:true,count:n+(hr&&hr.fixed?hr.fixed.length:0),thumb:th?1:0,more:cfr,heal:hr}}catch(e){return{ok:false,error:String(e.message||e)}}finally{try{d.detach()}catch{}w.destroy()}});
 /* ===== Verificacao da copia (v60): abre a copia escondida, acelera a animacao e baixa do site original o que falta ou esta danificado ===== */
 async function diagRun(id,ms){
