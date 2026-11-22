@@ -1283,47 +1283,51 @@ function brgPlan(html,blocks,map){let h=html;const rows=[];for(const b of blocks
 let ulT='up',ulQv='',ulRes=null;
 function ulH(){return`<details class=ulb><summary>Criar Upsell / Downsell</summary><div class=sgm id=ult><button class="${ulT=='up'?'on':''}" onclick="ulSet('up')">Upsell</button><button class="${ulT=='down'?'on':''}" onclick="ulSet('down')">Downsell</button></div><textarea id=ulq rows=4 oninput="ulQv=this.value" placeholder="${ulT=='up'?'Descreva a oferta. Ex.: 6 apostilas de programação por R$12,90 para quem acabou de comprar os 500 slides.':'Descreva a oferta. Ex.: as mesmas 6 apostilas, agora por R$9,90, porque o cliente recusou a primeira oferta.'}">${esc(ulQv)}</textarea><div class=row2><button class=b id=ulc onclick=ulCopy()>Copiar prompt completo</button></div><small class=mut>Copia as instruções + sua descrição + o código desta página (Front). Não cria nem publica nada.</small></details>`}
 function ulSet(t){ulT=t;document.querySelectorAll('#ult button').forEach((b,i)=>b.classList.toggle('on',(i==0)==(t=='up')));const q=$('#ulq');if(q)q.placeholder=t=='up'?'Descreva a oferta. Ex.: 6 apostilas de programação por R$12,90 para quem acabou de comprar os 500 slides.':'Descreva a oferta. Ex.: as mesmas 6 apostilas, agora por R$9,90, porque o cliente recusou a primeira oferta.'}
-function ulPrompt(t,txt,html){const comum=`REGRAS GERAIS
-- Entregue UM único arquivo HTML completo e funcional (HTML + CSS + JS no mesmo arquivo), pronto para publicar, responsivo e otimizado para celular.
-- Use o código do Front (no final deste texto) como REFERÊNCIA DE DESIGN: reproduza a identidade visual (cores, tipografia, espaçamentos, botões, cards, estilo de imagens, animações e efeitos). Não é uma estrutura obrigatória de conteúdo: não copie as seções do Front, crie uma estrutura nova adequada a esta página.
-- Reaproveite as classes, variáveis CSS, fontes e animações que fizerem sentido, e mantenha as imagens do Front só se combinarem; para imagens novas, deixe um espaço com um texto alternativo descritivo.
-- Escreva toda a copy em português do Brasil, persuasiva e clara, com benefícios concretos, sem exageros que prometam resultados garantidos.
-- Use CTAs estratégicos e repetidos (botão principal destacado, com verbo de ação). Deixe os links de compra e de recusa como href="#" com um comentário indicando onde colocar o link real.
-- Não invente dados que eu não informei (preços, prazos, números, depoimentos). Quando faltar uma informação, use um marcador entre colchetes, como [PREÇO] ou [LINK DE COMPRA].
-- Responda somente com o código final em um único bloco, sem explicações antes ou depois.`;
-const up=`Você é um designer e copywriter especialista em funis de vendas e páginas de alta conversão. Crie uma página de UPSELL.
+function ulPrompt(t,txt,html){const comum=`PADRÃO DE QUALIDADE (obrigatório)
+1. PRIMEIRO ANALISE o código do Front (no final) para extrair o sistema visual: paleta, cor de destaque dos botões, fontes, tamanhos de título, raio das bordas, sombras, estilo de cards, ícones, animações e transições. Em seguida construa a página usando ESSE sistema, de modo que pareça a mesma marca. Reaproveite as variáveis CSS, classes e animações do Front. Não copie as seções nem o texto do Front.
+2. CADA SEÇÃO TEM UMA FUNÇÃO ÚNICA. Proibido repetir a mesma ideia, os mesmos benefícios ou o mesmo bloco em seções diferentes. Proibido encher a página com seções genéricas só para alongar (depoimentos inventados, FAQ longo, "por que nos escolher", listas de 10 itens, contadores falsos, selos sem sentido). Se uma seção não ajuda a pessoa a decidir agora, não a crie.
+3. Menos é mais: a página deve caber em 2 a 4 telas de celular. Texto curto, frases diretas, no máximo 3 a 5 itens por lista, parágrafos de até 2 linhas.
+4. HIERARQUIA VISUAL forte: um título dominante, um preço dominante e um único botão principal destacado. Muito espaço em branco, contraste alto, tipografia grande no celular. Nada de blocos todos iguais empilhados.
+5. DESIGN profissional e atual: composição com ritmo (alterne blocos de destaque e blocos leves), um elemento de destaque visual na oferta (card da oferta, selo de "oferta única", comparação de preços), microanimações suaves de entrada (usando o padrão de animação do Front, se houver), botão com estado hover/active, e sem aparência de template genérico.
+6. MOBILE FIRST: a maior parte dos acessos é no celular. Botões grandes (mínimo 52px de altura), largura total no celular, textos legíveis (mínimo 16px), nada cortado ou com rolagem lateral. Também deve ficar excelente no computador.
+7. CTA: no máximo 2 botões de compra na página (um na primeira tela e um depois do preço), sempre com o mesmo texto de ação, específico e em primeira pessoa quando fizer sentido (ex.: "Quero as apostilas por R$12,90"). O botão de recusa é um link de texto pequeno e discreto, nunca um botão chamativo.
+8. COPY: específica para o produto que descrevi, em português do Brasil, com benefícios concretos e resultado final para o cliente. Sem clichês ("revolucionário", "transforme sua vida"), sem promessas de resultado garantido, sem urgência falsa. Não invente números, prazos, depoimentos, nomes ou dados que eu não informei: use marcadores entre colchetes, como [PREÇO], [LINK DE COMPRA], [LINK DE RECUSA].
+9. TÉCNICO: entregue UM único arquivo HTML completo (HTML + CSS + JS no mesmo arquivo), válido, semântico, com <meta viewport>, <title> adequado e sem dependências externas além das fontes/ícones que o Front já usa. Links de compra e recusa com href="#" e um comentário HTML indicando onde colocar o link real. Imagens: se o Front tiver imagens do produto que fazem sentido, reutilize; para as novas, use um bloco com gradiente do mesmo estilo e texto alternativo, sem imagens quebradas.
+10. ANTES DE ESCREVER O CÓDIGO, planeje mentalmente a estrutura (cada seção e sua função) e revise para cortar qualquer repetição. Na resposta, entregue SOMENTE o código final em um único bloco, sem explicações antes ou depois.`;
+const up=`Você é diretor de arte e copywriter de resposta direta, especialista em páginas de UPSELL de alta conversão para infoprodutos. Crie a página de UPSELL abaixo.
 
 CONTEXTO
-O cliente ACABOU DE COMPRAR o produto principal (a página Front, cujo código está no final). Esta página aparece logo depois da compra e apresenta uma nova oferta complementar.
+O cliente ACABOU DE COMPRAR o produto principal (a página Front, cujo código está no final). Esta página aparece imediatamente após a compra, quando ele está mais propenso a comprar de novo. Ele NÃO precisa ser convencido do básico: ele já confia na marca. Precisa entender, em segundos, o que é a oferta extra, por que combina com o que acabou de comprar e que a condição é especial agora.
 
-OBJETIVO
-Converter o cliente que acabou de comprar em uma segunda compra, de forma rápida e direta.
+ESTRUTURA OBRIGATÓRIA (nesta ordem, cada bloco com função única)
+1. Faixa de confirmação no topo: reconhece a compra ("Compra confirmada") e sinaliza que há uma oferta especial antes de continuar. Uma linha, sem enfeite.
+2. Primeira tela: título forte com a promessa da oferta complementar + subtítulo de 1 linha ligando-a ao produto que ele acabou de comprar + visual da oferta (mockup/gradiente do estilo do Front).
+3. "O que você recebe": de 3 a 5 itens objetivos, cada um com um benefício diferente, sem repetir ideias.
+4. "Por que combina com o que você acabou de comprar": 2 ou 3 frases mostrando o resultado somado das duas compras (ex.: aprende mais rápido, completa a lacuna, evita comprar separado depois).
+5. Bloco de preço: o preço como elemento mais forte da página, com ancoragem (valor de referência riscado, só se eu informar um) e a condição única desta página + botão principal.
+6. Garantia ou segurança em 1 ou 2 linhas (só se fizer sentido para a oferta) + link discreto de recusa ("Não, obrigado, quero seguir sem esta oferta").
+Não crie nenhuma seção além dessas.
 
-O QUE A PÁGINA PRECISA TER
-- Reconhecer ou parabenizar o cliente pela compra anterior, logo no topo.
-- Apresentar a nova oferta como complemento natural do que ele acabou de adquirir.
-- Mostrar por que essa oferta agrega valor à compra original (o que ele ganha a mais, o problema que resolve, o resultado mais rápido).
-- Benefícios claros, em poucos blocos, com foco no que o cliente conquista.
-- Preço e condição bem destacados, com ancoragem quando fizer sentido, e CTA estratégico em mais de um ponto.
-- Uma opção discreta e respeitosa de recusar a oferta.
-- Estrutura curta, mais enxuta e direta que a do Front, pensada para quem já está no clima de compra. Crie uma estrutura própria de Upsell, sem apenas duplicar as seções do Front.
+TOM
+Direto, caloroso e confiante, como quem está dando uma vantagem a um cliente que acabou de entrar. Sem pressão agressiva.
 
 ${comum}`;
-const dw=`Você é um designer e copywriter especialista em funis de vendas e páginas de alta conversão. Crie uma página de DOWNSELL.
+const dw=`Você é diretor de arte e copywriter de resposta direta, especialista em páginas de DOWNSELL de alta conversão para infoprodutos. Crie a página de DOWNSELL abaixo.
 
 CONTEXTO
-O cliente comprou o produto principal (a página Front, cujo código está no final), viu a oferta de UPSELL e RECUSOU. Esta página aparece logo em seguida para recuperar essa venda. O Downsell é a continuação do Upsell, não uma nova página de vendas convencional.
+O cliente comprou o produto principal (a página Front, cujo código está no final), viu a oferta do UPSELL e RECUSOU. Esta página aparece logo depois da recusa, como uma segunda chance com condição melhor. O Downsell é a CONTINUAÇÃO do Upsell: é o MESMO produto ofertado antes, agora mais barato (ou em versão menor, somente se eu pedir). Não é uma página de vendas nova e não deve parecer outra oferta.
 
-OBJETIVO
-Recuperar a oferta que o cliente acabou de recusar, apresentando uma condição melhor.
+ESTRUTURA OBRIGATÓRIA (nesta ordem, cada bloco com função única)
+1. Abertura curta e sem pressão que reconhece a decisão ("Tudo bem, a gente entende") e vira a chave: "Antes de sair, uma condição especial só para você".
+2. Primeira tela: título com o MESMO produto do Upsell e o NOVO preço em destaque + visual do produto (mesmo estilo do Upsell) + botão principal.
+3. Comparação de preço: preço anterior riscado, preço novo bem maior e a economia (use os valores que eu informar; se faltar algum, use [PREÇO ANTERIOR] e [PREÇO NOVO]).
+4. O que continua incluso: resumo do que ele leva, em no máximo 3 a 4 itens curtos (o essencial do Upsell, sem repetir o texto dele).
+5. Quebra de objeções: de 2 a 3 respostas curtas às dúvidas mais prováveis de quem recusou (preço, "será que preciso?", risco). Cada uma com 1 ou 2 frases, sem repetir a mesma ideia.
+6. Garantia ou segurança em 1 ou 2 linhas (só se fizer sentido) + segundo botão principal + link discreto de recusa final ("Não, obrigado, vou seguir sem esta oferta").
+Não crie nenhuma seção além dessas. Mantenha a página claramente mais curta e mais objetiva que o Upsell.
 
-O QUE A PÁGINA PRECISA TER
-- Reconhecer a decisão do cliente sem pressão e sem confronto, e mostrar que existe uma condição especial só agora.
-- Apresentar o MESMO produto da oferta anterior (não apresente um produto diferente, a menos que eu peça explicitamente abaixo), agora com desconto.
-- Destacar a nova condição de preço e o benefício de aproveitar agora (mostrar o preço anterior riscado quando eu informar, e a economia).
-- Usar argumentos persuasivos para quem recusou a primeira oferta: tirar objeções (preço, dúvida, achar que não precisa), reforçar o valor e reduzir o risco.
-- CTAs claros e repetidos, incentivando aceitar a nova condição, e uma saída discreta para quem ainda não quiser.
-- Página curta, objetiva e focada na recuperação da venda, mais curta que o Upsell.
+TOM
+Empático, objetivo, sem culpa e sem pressão. Mostre que é uma oportunidade pontual, não uma cobrança.
 
 ${comum}`;
 return(t=='up'?up:dw)+`
@@ -1797,11 +1801,11 @@ if(destOf(cur)!='ht'&&(a.p||known)){if(!htOk())return need('Falta configurar a H
 if(destOf(cur)=='ht'&&!known){domsList().push({h:a.h,dir:'/domains/'+a.h+'/public_html'});sc()}
 if(cur.domain!=a.h)cur.dns=null;cur.domain=a.h;cur.path=a.p;cur.addr=1;sv();side();toast('Endereço adicionado: '+a.h+(a.p?'/'+a.p:''))}
 function adr2(){const h=$('#dmH'),p=$('#dmP'),d=$('#dm');if(!h||!p||!d)return;let hv=h.value.trim().replace(/^https?:\/\//i,'');const i=hv.indexOf('/');if(i>-1){p.value=hv.slice(i+1).split(/[?#]/)[0].replace(/^\/+/,'');hv=hv.slice(0,i);h.value=hv}const pv=p.value.trim().replace(/^\/+/,'');d.value=hv+(pv?'/'+pv:'');adrIn()}
-function adrAsk(go2){let h='';const L=domsList(),o=modal('Onde publicar?',`<p class=mut style="margin-top:0">Escolha o domínio e, se quiser, o final do endereço.</p><label class=dpl>Domínio</label>${L.length?`<div class=dch>${L.map(x=>`<button class=dc data-h="${esc(x.h)}">${esc(x.h)}</button>`).join('')}</div>`:''}<input id=aoh placeholder="${L.length?'Ou digite outro domínio':'oferta.seusite.com.br'}" autocomplete=off autocapitalize=off spellcheck=false style="margin-top:8px"><label class=dpl style="margin-top:14px">Final do endereço <small>(opcional)</small></label><div class=adr2p><span>/</span><input id=aop placeholder="deixe vazio para só o domínio" autocomplete=off autocapitalize=off spellcheck=false></div><div id=aer class=aer></div><div class=adr2a><button class=b id=aok disabled>Continuar</button></div>`,[['Cancelar']]);
+function adrAsk(go2){const L=domsList(),o=modal('Onde publicar?',`<p class=mut style="margin-top:0">Toque num domínio salvo ou digite um novo. O final do endereço é opcional.</p><label class=dpl>Domínio</label><input id=aoh placeholder="oferta.seusite.com.br" autocomplete=off autocapitalize=off spellcheck=false>${L.length?`<div class=dch>${L.map(x=>`<button type=button class=dc data-h="${esc(x.h)}">${esc(x.h)}</button>`).join('')}</div>`:''}<label class=dpl style="margin-top:14px">Final do endereço <small>(opcional)</small></label><div class=adr2p><span>/</span><input id=aop placeholder="deixe vazio para só o domínio" autocomplete=off autocapitalize=off spellcheck=false></div><div id=aer class=aer></div><div class=adr2a><button type=button class=b id=aok disabled>Continuar</button></div>`,[['Cancelar']]);
 const H=o.querySelector('#aoh'),P=o.querySelector('#aop'),E=o.querySelector('#aer'),B=o.querySelector('#aok');
-const cc=()=>{let v=H.value.trim().replace(/^https?:\/\//i,'');const i=v.indexOf('/');if(i>-1){P.value=v.slice(i+1).split(/[?#]/)[0].replace(/^\/+/,'');v=v.slice(0,i);H.value=v}const dm=h||v,pt=P.value.trim().replace(/^\/+|\/+$/g,'').toLowerCase();let msg='',okk=!!dm;if(dm){const a=addrParse(dm+(pt?'/'+pt:''));if(a.e){msg=a.e[1];okk=false}else{const u=adrUse(a.h,a.p);if(u){msg='Não é possível: <b>'+esc(a.h+(a.p?'/'+a.p:''))+'</b> já está sendo usado pela página <b>'+esc(u.name||'sem nome')+'</b>. Escolha outro final.';okk=false}}}E.innerHTML=msg;E.style.display=msg?'block':'none';B.disabled=!okk;o.querySelectorAll('.dc').forEach(b=>b.classList.toggle('on',b.dataset.h==h))};
-o.querySelectorAll('.dc').forEach(b=>b.onclick=e=>{e.stopPropagation();h=h==b.dataset.h?'':b.dataset.h;if(h)H.value='';cc()});H.oninput=()=>{if(H.value.trim())h='';cc()};P.oninput=cc;
-B.onclick=e=>{e.stopPropagation();const dm=h||H.value.trim(),pt=P.value.trim().replace(/^\/+|\/+$/g,'').toLowerCase();o.remove();adrAdd(dm+(pt?'/'+pt:''));if(cur.domain==dm)go2()};cc();setTimeout(()=>{if(!L.length)H.focus()},50)}
+const cc=()=>{let v=H.value.trim().replace(/^https?:\/\//i,'');const i=v.indexOf('/');if(i>-1){P.value=v.slice(i+1).split(/[?#]/)[0].replace(/^\/+/,'');v=v.slice(0,i);H.value=v}const dm=v.toLowerCase(),pt=P.value.trim().replace(/^\/+|\/+$/g,'').toLowerCase();let msg='',okk=!!dm;if(dm){try{const a=addrParse(dm+(pt?'/'+pt:''));if(a.e){msg=a.e[1];okk=false}else{const u=adrUse(a.h,a.p);if(u){msg='Não é possível: <b>'+esc(a.h+(a.p?'/'+a.p:''))+'</b> já está sendo usado pela página <b>'+esc(u.name||'sem nome')+'</b>. Escolha outro final.';okk=false}}}catch(x){msg='';okk=true}}E.innerHTML=msg;E.style.display=msg?'block':'none';B.disabled=!okk;o.querySelectorAll('.dc').forEach(b=>b.classList.toggle('on',!!dm&&b.dataset.h.toLowerCase()==dm))};
+o.querySelectorAll('.dc').forEach(b=>b.addEventListener('click',e=>{e.stopPropagation();e.preventDefault();H.value=b.dataset.h;cc();if(!B.disabled)B.focus();else P.focus()}));H.oninput=cc;P.oninput=cc;
+B.addEventListener('click',e=>{e.stopPropagation();const dm=H.value.trim().replace(/^https?:\/\//i,'').replace(/\/.*$/,''),pt=P.value.trim().replace(/^\/+|\/+$/g,'').toLowerCase();if(!dm)return;o.remove();adrAdd(dm.toLowerCase()+(pt?'/'+pt:''));if((cur.domain||'')==dm.toLowerCase())go2()});cc();setTimeout(()=>{if(!L.length)H.focus()},50)}
 function adrPick(h){const H=$('#dmH');if(H){H.value=h;adr2();return}const a=addrParse($('#dm').value);$('#dm').value=h+(a.p&&!a.e?'/'+a.p:'');adrIn()}
 function noDirModal(dir,h,go){modal('A pasta do domínio não existe','<p class=mut style="margin-top:0">A pasta <code>'+esc(dir)+'</code> ainda não existe na Hostinger. Isso acontece quando <b>'+esc(h||'o domínio')+'</b> ainda não foi adicionado como site lá (hPanel &gt; Sites &gt; Adicionar site).</p><p class=mut>Se o domínio já está na Hostinger com outra pasta, corrija em Configurações › Domínios vinculados.</p>',[['Cancelar'],['Criar a pasta e publicar',go,'b']])}
 function cardAddr(p){const a=addrOf(p);return a?'<div class=cu title="'+esc(a)+'"><i class="dot '+(p.pub?'g':'')+'"></i>'+esc(a)+'</div>':''}
