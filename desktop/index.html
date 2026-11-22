@@ -663,8 +663,8 @@ function recover(p){if(!p.origin)return fail('Não foi possível abrir','Esta p�
 /* ===== v63: Continuar de onde parou (celular). Discreto: some sozinho quando não há nada pendente e pode ser dispensado ===== */
 const lastGet=()=>{try{return JSON.parse(localStorage.getItem('sl_last')||'null')||{}}catch{return{}}},lastSet=o=>{try{localStorage.setItem('sl_last',JSON.stringify(o))}catch{}};
 const PGD=new Map();
-function pgDirty(p){if(!p||p.kind)return false;const k=p.id+'|'+(p.updated||0)+'|'+(p.pubAt||0)+'|'+(p.pubSig||'').length+'|'+(p.pubN==null?'':p.pubN)+'|'+(p.ops||[]).length,c=PGD.get(k);if(c!==undefined)return c;
- const o=p.ops||[];let r;if(!p.pub)r=reduceOps(o).length>0;else{const ps=p.pubSig!=null?p.pubSig:sigOf(o.slice(0,p.pubN==null?o.length:p.pubN));r=sigOf(o)!=ps||seoDirty(p)}
+function pgDirty(p){if(!p||p.kind)return false;const k=p.id+'|'+(p.domain||'')+'/'+(p.path||'')+'|'+(p.updated||0)+'|'+(p.pubAt||0)+'|'+(p.pubSig||'').length+'|'+(p.pubN==null?'':p.pubN)+'|'+(p.ops||[]).length,c=PGD.get(k);if(c!==undefined)return c;
+ const o=p.ops||[];let r;if(!p.pub)r=reduceOps(o).length>0||addrPend(p);else if(addrPend(p))r=true;else{const ps=p.pubSig!=null?p.pubSig:sigOf(o.slice(0,p.pubN==null?o.length:p.pubN));r=sigOf(o)!=ps||seoDirty(p)}
  if(PGD.size>400)PGD.clear();PGD.set(k,r);return r}
 function contH(){if(!api.mobile)return'';const L=lastGet();let p=pages.find(x=>x.id==L.id&&!x.kind&&!x.trash&&!x.broken),at=L.at;
  if(!p){const s=pages.filter(x=>!x.kind&&!x.trash&&!x.broken&&(x.ops||[]).length).sort((a,b)=>b.updated-a.updated)[0];if(!s)return'';p=s;at=s.updated}
@@ -819,8 +819,10 @@ const made=x=>{if(x.op=='dup')return x.path.slice(0,-1).concat([x.path[x.path.le
 while(ch){ch=0;for(let i=0;i<o.length&&!ch;i++){const m=made(o[i]);if(!m)continue;for(let j=i+1;j<o.length;j++){const x=o[j];if(x.op=='rm'&&same(x.path,m)){const mid=o.slice(i+1,j);const par=m.slice(0,-1),k=m.length-1;const mid2=mid.filter(y=>!(y.path&&under(y.path,m))).map(y=>{if(y.path&&y.path.length>k&&same(y.path.slice(0,k),par)&&y.path[k]>m[k]){y=Object.assign({},y,{path:y.path.slice()});y.path[k]--}return y});o=o.slice(0,i).concat(mid2,o.slice(j+1));ch=1;break}if(x.op=='ins'||x.op=='dup'||x.op=='rm'||x.op=='mv')break}}}
 return o}
 const sigOf=ops=>JSON.stringify(reduceOps(ops).map(x=>{const y=Object.assign({},x);delete y.t;delete y.g;delete y.ai;return y}));
-function dirty(){if(!cur||prev)return false;if(!cur.pub)return reduceOps(cur.ops).length>0;const ps=cur.pubSig!=null?cur.pubSig:sigOf(cur.ops.slice(0,cur.pubN==null?cur.ops.length:cur.pubN));return sigOf(cur.ops)!=ps||seoDirty(cur)}
+function addrPend(p){if(!p||p.kind||!isAdded(p)||destOf(p)!='ht')return false;if(!p.pub||!p.url)return !p.pub;try{const o=new URL(p.url);return addrOf(p)!==(o.host+o.pathname).replace(/\/+$/,'')}catch{return false}}
+function dirty(){if(!cur||prev)return false;if(!cur.pub)return reduceOps(cur.ops).length>0||addrPend(cur);if(addrPend(cur))return true;const ps=cur.pubSig!=null?cur.pubSig:sigOf(cur.ops.slice(0,cur.pubN==null?cur.ops.length:cur.pubN));return sigOf(cur.ops)!=ps||seoDirty(cur)}
 function pubState(){const b=$('#pbtn');if(b&&!b.disabled)b.classList.toggle('idle',fctx?!fnDirty(fnOf(fctx.fid)):!dirty())}
+{const s0=side;side=function(){const r=s0.apply(this,arguments);try{pubState()}catch{}return r}}
 function side(){const T=prev?[['pub','Publicar']]:[['el','Elemento'],['ai','Claude'],['pub','Publicar']];if(fctx&&!prev)T.splice(2,0,['fn','Funil']);if(!T.some(x=>x[0]==tab))tab=T[0][0];if(tab=='fn'&&!fnAsk){fnAsk=1;tell({cmd:'btns'});setTimeout(()=>fnAsk=0,900)}const pb0=$('#pbtn');if(pb0&&fctx&&!pb0.disabled)pb0.textContent='Publicar funil';$('#sp').innerHTML=`<div class=tabs>${T.map(x=>`<button class="${tab==x[0]?'on':''}" onclick="tab='${x[0]}';side()">${x[1]}</button>`).join('')}</div>`+(tab=='el'?elH():tab=='ai'?aiH():tab=='fn'?fnTab():pubH());if(tab=='ai')aiMount()}
 function elH(){if(msi)return multiH();return elRest()}
 function btnHead(){return`<div class=blk><div class=row style="margin-top:0"><span class=chip>Botão</span><span class=sp></span><button class=b2 title="Selecionar o pai" onclick="tell({cmd:'up'})">⬆ Pai</button><button class=b2 onclick="tell({cmd:'dup'})">⧉</button><button class=b2 onclick="tell({cmd:'rm'})">🗑</button></div></div>`}
