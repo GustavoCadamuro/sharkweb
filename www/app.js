@@ -20,7 +20,7 @@ function makeSync(E){
   const save=()=>{try{E.store.set('slsync',JSON.stringify(S))}catch{}};
   const cfgS=()=>{const s=(E.cfg()||{}).sync;return s&&s.on&&s.url&&s.key?s:null};
   let running=false,again=false,timer=null,kt=null,chunk=1500000,st={txt:'',busy:0,err:''};
-  const status=(txt,busy)=>{st={txt:txt||'',busy:!!busy,err:S.err||''};E.onStatus&&E.onStatus(st)};
+  let stepAt=Date.now(),runId=0;const status=(txt,busy)=>{stepAt=Date.now();st={txt:txt||'',busy:!!busy,err:S.err||''};E.onStatus&&E.onStatus(st)};
   const jsonOf=r=>{try{return JSON.parse(td.decode(r.u8))}catch{return null}};
   async function call(act,q,body,raw,quick,ct){
     const c=cfgS();if(!c)throw new Error('Sincronização desligada');
@@ -119,19 +119,19 @@ function makeSync(E){
   const rep=()=>S.rep||(S.rep={});
   const mark=(id,name,state,msg)=>{const r=rep();r[id]={n:name||(r[id]&&r[id].n)||id,s:state,e:msg||'',at:Date.now()}};
   async function run(force){
-    if(running){again=true;return}
+    if(running){if(Date.now()-stepAt>90000){running=false;S.err='Travou em: '+(st.txt||'sincronizando')+'. Tentando de novo.';save()}else{again=true;return}}
     const c=cfgS();if(!c)return;
     if(!force&&E.visible&&!E.visible())return;
-    running=true;again=false;let changed=0,errs=0,n=0;
+    running=true;again=false;let changed=0,errs=0,n=0;const myRun=++runId;
     try{
-      status('Sincronizando...',1);
+      status('Conectando ao servidor...',1);
       if(force||Date.now()-lastPing>60000){const pj=jsonOf(await call('ping','',null,false,true));lastPing=Date.now();if(pj&&pj.post)chunk=Math.max(262144,Math.min(chunk,Math.floor(pj.post*0.7)))}
       if(force||Date.now()-lastSet>30000){
         lastSet=Date.now();
         if(E.shareOut){try{const d=E.shareOut(),t=JSON.stringify(d);if(t!==S.sh){const r=await call('settings','',{data:d});if(r.status==200){S.sh=t;save()}}}catch(e){if(e.fatal)throw e}}
         if(E.shareIn){try{const r=await call('settings');if(r.status==200){const j=jsonOf(r);if(j&&j.data&&j.rev!==S.shr){E.shareIn(j.data);S.shr=j.rev;save()}}}catch(e){if(e.fatal)throw e}}
       }
-      const ij=jsonOf(await call('index'));if(!ij||!ij.pages)throw new Error('resposta inválida do servidor');
+      status('Buscando a lista de páginas...',1);const ij=jsonOf(await call('index'));if(!ij||!ij.pages)throw new Error('resposta inválida do servidor');
       const R=ij.pages,busy=E.busy?E.busy():null,pg=E.getPages(),L={};
       pg.forEach(p=>{if(p&&p.id)L[p.id]=p});
       const ids=[...new Set([...Object.keys(L),...Object.keys(R),...Object.keys(S.tomb)])];
@@ -141,7 +141,7 @@ function makeSync(E){
         if(got.length){const arr=E.getPages().slice();for(const[id,m]of got){if(arr.some(x=>x.id==id))continue;const pg=Object.assign({},m,{id,stub:1});arr.push(pg);L[id]=pg;S.base[id]={l:{m:sha1s(canon(metaOf(pg))),f:EMPTYF},r:{m:R[id].m,f:R[id].f}}}E.setPages(arr);await A.save(arr);save();E.onChange&&E.onChange()}}
       const cost=id=>{const l=L[id],r=R[id];if(PM[id])return-1;if(l&&l.kind)return 0;if(l&&l.stub)return 2;if(r&&!r.del&&r.f==EMPTYF)return 0;if(!l&&r&&!r.del)return 2;return 1};
       ids.sort((a,b)=>cost(a)-cost(b));
-      const LS={};await pool(ids.filter(id=>L[id]&&!(Array.isArray(busy)?busy.indexOf(id)>=0:id===busy)),async id=>{try{LS[id]=await lstate(L[id])}catch{}},6);
+      status('Lendo as páginas deste aparelho...',1);const LS={};await pool(ids.filter(id=>L[id]&&!(Array.isArray(busy)?busy.indexOf(id)>=0:id===busy)),async id=>{try{LS[id]=await lstate(L[id])}catch{}},6);
       const lstate0=lstate,lst=l=>LS[l.id]||lstate0(l);
       let i=0,dl=0;
       for(const id of ids){
@@ -181,7 +181,7 @@ function makeSync(E){
       S.last=Date.now();S.lastN=changed;save();
       status('',0);
     }catch(e){S.err=String(e.message||e).slice(0,160);save();status('',0)}
-    finally{running=false;if(again){again=false;kick(200)}}
+    finally{if(myRun==runId){running=false;if(again){again=false;kick(200)}}}
   }
   function kick(ms){if(!cfgS())return;clearTimeout(kt);kt=setTimeout(()=>run(false),ms==null?1500:ms)}
   function start(){clearInterval(timer);if(!cfgS())return;timer=setInterval(()=>{if(!document.hidden)kick(0)},2500);kick(300)}
@@ -210,7 +210,7 @@ function syncRepHtml(){const r=syncRows();if(!r.length)return'<p class=mut style
 function syncRepText(){return SYNC.report().map(x=>(x.s=='err'?'ERRO ':x.s=='busy'?'ABERTA ':'OK ')+(x.name||x.id)+' ['+x.id+']'+(x.e?' - '+x.e:'')).join('\n')+'\n'+(SYNC.info().err||'')}
 function syncUi(){const e=$('#syncs');if(e){e.textContent=syncTxt();e.title=SYNC.info().err||''}const t=$('#syst');if(t)t.textContent=syncLong();const g=$('#syrepw');if(g)g.innerHTML=syncRepHtml()}
 function syncCopyRep(){try{navigator.clipboard.writeText(syncRepText()).then(()=>toast('Relatório copiado'),()=>toast('Não consegui copiar'))}catch{toast('Não consegui copiar')}}
-function syncRepModal(){modal('Sincronização','<p class=mut style="margin-top:0">'+esc(SYNC.info().err||'Tudo certo.')+'</p>'+syncRepHtml(),[['Copiar relatório',syncCopyRep],['Fechar',null,'b']])}
+function syncRepModal(){modal('Sincronização','<p class=mut style="margin-top:0">'+esc(SYNC.info().err||'Tudo certo.')+'</p><p class=mut style="font-size:12px;margin:0 0 8px">Versão do app: v63.22 · Etapa: '+esc(SYNC.info().txt||'parado')+'</p>'+syncRepHtml(),[['Copiar relatório',syncCopyRep],['Fechar',null,'b']])}
 function syncBlock(){const s=cfg.sync||{},on=!!(s.on&&s.url&&s.key),mob=!!api.mobile;let h='<div class="blk box" style="margin-top:14px"><h4>Sincronização entre aparelhos</h4>';
 if(mob){if(!on)h+='<p class=mut style="margin:0 0 8px;font-size:12px">No computador, abra Configurações › Sincronização e toque em <b>Copiar código do celular</b>. Cole o código aqui.</p><label>Código do computador</label><input id=syc placeholder="Cole o código aqui" autocapitalize=off autocomplete=off><div class=row><button class=b onclick=syncPair()>Conectar</button></div>';
 else h+='<p class=mut id=syst style="margin:0 0 8px;font-size:12px">'+esc(syncLong())+'</p><div class=row><button class=b2 onclick=syncNow()>Sincronizar agora</button><button class=b2 onclick=syncCopyRep()>Copiar relatório</button><span class=sp></span><button class=b2 onclick=syncOff()>Desconectar</button></div><div id=syrepw>'+syncRepHtml()+'</div>'}
@@ -229,7 +229,7 @@ if(!t.ok){cfg.sync.on=0;sc();conf();return fail('O servidor foi enviado, mas nã
 SYNC.reset();SYNC.start();conf();toast('Sincronização ativada. Copie o código do celular.')}
 function syncAgain(){cfg.sync.on=1;sc();SYNC.reset();SYNC.start();conf()}
 function syncOff(){cfg.sync.on=0;sc();SYNC.stop();conf();toast('Sincronização desligada neste aparelho')}
-async function syncNow(quiet){if(!(cfg.sync&&cfg.sync.on&&cfg.sync.url&&cfg.sync.key)){toast('A sincronização está desligada neste aparelho');go('cfg');return 0}
+async function syncNow(quiet){if(!quiet&&SYNC.info().busy){syncRepModal();return 0}if(!(cfg.sync&&cfg.sync.on&&cfg.sync.url&&cfg.sync.key)){toast('A sincronização está desligada neste aparelho');go('cfg');return 0}
  if(!quiet)toast('Sincronizando...');let t0=Date.now();try{await SYNC.run(true)}catch{}
  while(SYNC.info().busy&&Date.now()-t0<45000)await new Promise(r=>setTimeout(r,250));
  syncUi();const i=SYNC.info();if(i.err){if(quiet)toast('⚠ '+i.err.slice(0,90));else syncRepModal();return 0}
