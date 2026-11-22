@@ -378,3 +378,5 @@ body.kb-fr #donebtn{display:block}
   .adv-ct{overflow:auto}
 }
 .adcard{display:none}
+
+#gr .card .rtg{left:5px;top:5px;font-size:10px;padding:2px 7px}
