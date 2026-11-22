@@ -13,7 +13,7 @@ function makeSync(E){
   const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   function sha1s(str){const b=te.encode(str),l=b.length,n=((l+8)>>6)+1,w=new Uint32Array(n*16);for(let i=0;i<l;i++)w[i>>2]|=b[i]<<(24-(i&3)*8);w[l>>2]|=0x80<<(24-(l&3)*8);w[n*16-1]=l*8;let h0=0x67452301,h1=0xEFCDAB89|0,h2=0x98BADCFE|0,h3=0x10325476,h4=0xC3D2E1F0|0;const x=new Uint32Array(80),rl=(v,s)=>(v<<s)|(v>>>(32-s));for(let i=0;i<n*16;i+=16){for(let j=0;j<16;j++)x[j]=w[i+j];for(let j=16;j<80;j++)x[j]=rl(x[j-3]^x[j-8]^x[j-14]^x[j-16],1);let a=h0,b2=h1,c=h2,d=h3,e=h4;for(let j=0;j<80;j++){const f=j<20?(b2&c)|(~b2&d):j<40?b2^c^d:j<60?(b2&c)|(b2&d)|(c&d):b2^c^d,k=j<20?0x5A827999:j<40?0x6ED9EBA1:j<60?0x8F1BBCDC|0:0xCA62C1D6|0,t=(rl(a,5)+f+e+k+x[j])|0;e=d;d=c;c=rl(b2,30);b2=a;a=t}h0=(h0+a)|0;h1=(h1+b2)|0;h2=(h2+c)|0;h3=(h3+d)|0;h4=(h4+e)|0}return[h0,h1,h2,h3,h4].map(v=>(v>>>0).toString(16).padStart(8,'0')).join('')}
   const canon=v=>v===null||typeof v!='object'?JSON.stringify(v):Array.isArray(v)?'['+v.map(canon).join(',')+']':'{'+Object.keys(v).filter(k=>v[k]!==undefined).sort().map(k=>JSON.stringify(k)+':'+canon(v[k])).join(',')+'}';
-  const metaOf=p=>{const o={};for(const k in p)if(k!='broken')o[k]=p[k];return o};
+  const metaOf=p=>{const o={};for(const k in p)if(k!='broken'&&k!='stub')o[k]=p[k];return o};
   const u8b64=u=>{let s='';const c=0x8000;for(let i=0;i<u.length;i+=c)s+=String.fromCharCode.apply(null,u.subarray(i,i+c));return btoa(s)};
   const b64u8=b=>{const s=atob(b||''),u=new Uint8Array(s.length);for(let i=0;i<s.length;i++)u[i]=s.charCodeAt(i);return u};
   let S=(()=>{try{const j=JSON.parse(E.store.get('slsync')||'null');if(j&&j.base)return j}catch{}return{base:{},tomb:{},last:0,err:'',lastN:0}})();
@@ -28,12 +28,12 @@ function makeSync(E){
     for(;;){
       try{
         const url=c.url+'?a='+act+(q?'&'+q:'')+(viaq?'&k='+encodeURIComponent(c.key):'');
-        const r=await A.shttp({url,method:body==null?'GET':'POST',headers:{'X-SL-Key':c.key,'Content-Type':ct||(raw?'application/octet-stream':'application/json')},b64:body==null?'':u8b64(body instanceof Uint8Array?body:te.encode(JSON.stringify(body))),timeout:quick?15000:60000});
+        const r=await A.shttp({url,method:body==null?'GET':'POST',headers:{'X-SL-Key':c.key,'Content-Type':ct||(raw?'application/octet-stream':'application/json')},b64:body==null?'':u8b64(body instanceof Uint8Array?body:te.encode(JSON.stringify(body))),timeout:quick?15000:30000});
         if(!r||!r.status)throw new Error((r&&r.error)||'sem resposta');
         if(r.status==401){if(!viaq){viaq=true;continue}const e=new Error('Chave incorreta. Gere um novo código de pareamento.');e.fatal=1;throw e}
         if(r.status>=500||r.status==403&&tries<1&&!quick)throw new Error('servidor respondeu '+r.status);
         return{status:r.status,u8:b64u8(r.b64)};
-      }catch(e){if(e.fatal||quick||++tries>3)throw e;await sleep(500*tries*tries)}
+      }catch(e){if(e.fatal||quick||++tries>2)throw e;await sleep(500*tries*tries)}
     }
   }
   let altPut=false;
@@ -70,9 +70,11 @@ function makeSync(E){
       off+=len;if(off>=size)return;
     }
   }
+  let wantN=0;const PM={},PL={};
   async function downBlob(toId,path,size,h){
     let off=0;
     for(;;){
+      while(wantN>0&&!PM[toId])await sleep(150);
       const len=Math.min(chunk,size-off),r=len>0?await call('get','h='+h+'&off='+off+'&len='+len):{status:200,u8:new Uint8Array(0)};
       if(r.status!=200)throw new Error('download recusado ('+r.status+')');
       const w=await A.sfWrite({id:toId,p:path,b64:u8b64(r.u8),off,total:size,h});
@@ -93,7 +95,10 @@ function makeSync(E){
     }
     return'skip';
   }
-  async function pull(id,toId,r,tweak){
+  function pull(id,toId,r,tweak){if(tweak||id!=toId)return pullI(id,toId,r,tweak);if(PL[id])return PL[id];return PL[id]=pullI(id,toId,r).finally(()=>{delete PL[id]})}
+  async function fetchPage(id){wantN++;PM[id]=1;try{const ij=jsonOf(await call('index'));const r=ij&&ij.pages&&ij.pages[id];if(!r||r.del)throw new Error('Esta página não está mais no servidor');await pull(id,id,r);E.onChange&&E.onChange();return 1}finally{wantN--;delete PM[id]}}
+  async function pullMeta(id,r){const mr=await call('meta','id='+id);if(mr.status!=200)throw new Error('não achei a página no servidor');const pg=Object.assign({},jsonOf(mr)||{},{id}),arr=E.getPages().slice(),i=arr.findIndex(x=>x.id==id);if(i<0)return;arr[i]=pg;E.setPages(arr);await A.save(arr);const ls=await lstate(pg);S.base[id]={l:{m:ls.m,f:ls.f},r:{m:r.m,f:r.f}}}
+  async function pullI(id,toId,r,tweak){
     const mr=await call('meta','id='+id),fr=await call('files','id='+id);if(mr.status!=200||fr.status!=200)throw new Error('não achei a página no servidor');
     const meta=jsonOf(mr),files=jsonOf(fr)||{},have={};((await A.sfList(toId))||[]).forEach(x=>have[x.p]=x.h);
     const todo=Object.keys(files).filter(p=>have[p]!==files[p][1]);let dn=0;await pool(todo,async p=>{const[size,h]=files[p];await downBlob(toId,p,size,h);dn++;if(todo.length>1)status('Baixando "'+(meta.name||'página')+'": '+dn+' de '+todo.length+' arquivos',1)},4);
@@ -130,12 +135,17 @@ function makeSync(E){
       const R=ij.pages,busy=E.busy?E.busy():null,pg=E.getPages(),L={};
       pg.forEach(p=>{if(p&&p.id)L[p.id]=p});
       const ids=[...new Set([...Object.keys(L),...Object.keys(R),...Object.keys(S.tomb)])];
-      const cost=id=>{const l=L[id],r=R[id];if(l&&l.kind)return 0;if(r&&!r.del&&r.f==EMPTYF)return 0;if(!l&&r&&!r.del)return 2;return 1};
+      /* 1) fichas primeiro: páginas novas do outro aparelho aparecem já, só com nome/tipo/seção; os arquivos vêm depois */
+      const nw=Object.keys(R).filter(id=>!L[id]&&R[id]&&!R[id].del&&R[id].f!=EMPTYF&&!S.tomb[id]);
+      if(nw.length){status('Buscando páginas novas...',1);const got=[];await pool(nw,async id=>{try{const mr=await call('meta','id='+id);if(mr.status!=200)return;const m=jsonOf(mr);if(m&&!m.kind)got.push([id,m])}catch(e){if(e.fatal)throw e}},6);
+        if(got.length){const arr=E.getPages().slice();for(const[id,m]of got){if(arr.some(x=>x.id==id))continue;const pg=Object.assign({},m,{id,stub:1});arr.push(pg);L[id]=pg;S.base[id]={l:{m:sha1s(canon(metaOf(pg))),f:EMPTYF},r:{m:R[id].m,f:R[id].f}}}E.setPages(arr);await A.save(arr);save();E.onChange&&E.onChange()}}
+      const cost=id=>{const l=L[id],r=R[id];if(PM[id])return-1;if(l&&l.kind)return 0;if(l&&l.stub)return 2;if(r&&!r.del&&r.f==EMPTYF)return 0;if(!l&&r&&!r.del)return 2;return 1};
       ids.sort((a,b)=>cost(a)-cost(b));
       const LS={};await pool(ids.filter(id=>L[id]&&!(Array.isArray(busy)?busy.indexOf(id)>=0:id===busy)),async id=>{try{LS[id]=await lstate(L[id])}catch{}},6);
       const lstate0=lstate,lst=l=>LS[l.id]||lstate0(l);
-      let i=0;
+      let i=0,dl=0;
       for(const id of ids){
+        if(cost(id)==2&&dl>0&&again)break;
         i++;const isBusy=Array.isArray(busy)?busy.indexOf(id)>=0:id===busy;
         const l=L[id],r=R[id]&&!R[id].del?R[id]:null,rdel=!!(R[id]&&R[id].del),b=S.base[id];
         try{
@@ -150,12 +160,12 @@ function makeSync(E){
             const ls=await lst(l);
             if(!l.kind&&!Object.keys(ls.man).length&&r.f!=EMPTYF){
               if(isBusy)continue;
-              await pull(id,id,r);changed++;n++;mark(id,l.name,'ok','Estava sem arquivos neste aparelho; recuperei do ponto de encontro.');E.onChange&&E.onChange();continue}
+              status('Baixando "'+(l.name||'página')+'"...',1);await pull(id,id,r);dl++;changed++;n++;mark(id,l.name,'ok');E.onChange&&E.onChange();continue}
             if(!b){if(ls.m==r.m&&ls.f==r.f){S.base[id]={l:{m:ls.m,f:ls.f},r:{m:r.m,f:r.f}};mark(id,l.name,'ok');continue}}
             const lc=!b||ls.m!=b.l.m||ls.f!=b.l.f,rc=!b||r.m!=b.r.m||r.f!=b.r.f;
             if(isBusy&&!(lc&&!rc)){mark(id,l.name,'busy','Aberta no editor: as mudanças do outro aparelho chegam quando você sair dela.');continue}
             if(lc&&!rc){const x=await push(l,r);if(x=='ok')changed++;mark(id,l.name,'ok')}
-            else if(!lc&&rc){const pgn=await pull(id,id,r);changed++;n++;mark(id,pgn&&pgn.name,'ok');E.onChange&&E.onChange()}
+            else if(!lc&&rc){if(b&&r.f==b.r.f){await pullMeta(id,r);changed++;mark(id,l.name,'ok')}else{const pgn=await pull(id,id,r);changed++;n++;mark(id,pgn&&pgn.name,'ok')}E.onChange&&E.onChange()}
             else if(lc&&rc){
               const rm=jsonOf(await call('meta','id='+id))||{};
               if(t0(rm)>t0(l)){await dupLocal(l,' (versão deste aparelho)');await pull(id,id,r);E.onChange&&E.onChange()}
@@ -184,7 +194,7 @@ function makeSync(E){
   function info(){return{last:S.last,err:S.err,n:S.lastN,busy:running,on:!!cfgS(),txt:st.txt}}
   function report(){const r=rep(),pg={};E.getPages().forEach(p=>pg[p.id]=p);return Object.keys(r).map(id=>({id,name:(pg[id]&&pg[id].name)||r[id].n,s:r[id].s,e:r[id].e,at:r[id].at,funil:!!(pg[id]&&pg[id].kind=='funnel')})).sort((a,b)=>(a.s=='err'?0:1)-(b.s=='err'?0:1)||String(a.name).localeCompare(b.name))}
   function reset(){S={base:{},tomb:{},last:0,err:'',lastN:0};save()}
-  return{run,kick,start,stop,flush,report,tomb,decode,encode,test,info,reset,putBlobs,hubJson,_S:()=>S,_sha1:sha1s};
+  return{run,fetchPage,kick,start,stop,flush,report,tomb,decode,encode,test,info,reset,putBlobs,hubJson,_S:()=>S,_sha1:sha1s};
 }
 if(typeof module!='undefined')module.exports=makeSync;
 
@@ -256,7 +266,7 @@ function go(v){view=v;render();const m=$('#main');if(m){m.classList.remove('vin'
 function render(){if(view=='list'||view=='prod'||view=='pv'||view=='fnl')SYNC.kick(300);$('#side').style.display=(view=='edit'||view=='fmap')?'none':'';document.querySelectorAll('.nav[data-v]').forEach(n=>n.classList.toggle('on',n.dataset.v==(view=='fmap'?'fnl':view=='pv'?'prod':view)));view=='list'?list():view=='prod'?prodList():view=='pv'?prodView():view=='dash'?dash():view=='cfg'?conf():view=='fnl'?fnList():view=='fmap'?fnMap():editor()}
 function list(){$('#main').innerHTML=`<div class=pad>${contH()}<div class=hero><div class=sub>Páginas <span id=syncs class=mut onclick=syncNow() style="margin-left:8px;text-transform:none;letter-spacing:0;cursor:pointer">${syncTxt()}</span></div><h1>Suas páginas</h1><p class=mut>Cole o endereço de uma página para clonar e editar.</p><div class=cloner><span style="font-size:20px">🔗</span><input id=cu placeholder="Cole aqui o endereço da página que quer clonar" onkeydown="if(event.key=='Enter')run()"><button class=b onclick=run()>Clonar agora</button><button class=b2 title="Colar o código ou abrir um arquivo .html" onclick="impMenu()">Importar HTML</button><input id=hf type=file accept=".html,.htm" hidden onchange=impHtml(this)></div></div><div class=row style="justify-content:flex-start;gap:10px"><input id=q placeholder="Buscar páginas..." oninput=cards() style="max-width:300px"><button class=b2 onclick="grpEdit()" title="Criar uma seção para organizar páginas">＋ Seção</button></div><div id=gr class=grid></div><div id=trb></div></div>`;trashSweep();cards()}
 const grpL=()=>pages.filter(p=>p.kind=='group'&&!p.trash).sort((a,b)=>(a.ord||0)-(b.ord||0)||(a.created||0)-(b.created||0));
-function cardH(p){const tu=thUrl(p);return`<div class=card data-id="${p.id}"${p.grp?` style="--pc:${(pages.find(g=>g.id==p.grp)||{}).color||''}"`:''}><div class="pv${tu?'':' gen'}" onclick="abrir('${p.id}')">${rlOf(p)?`<span class=rtg style="--r:${rlOf(p)[2]}">${esc(rlTag(p))}</span>`:''}${tu?`<img src="${tu}" alt="" loading=lazy decoding=async>`:''}</div><div class=ci><b>${esc(p.name)}</b><span class="tag ${p.pub?(!p.broken&&pgDirty(p)?'ok y':'ok'):''}"${p.pub&&!p.broken&&pgDirty(p)?' title="Há alterações ainda não publicadas"':''}>${p.broken?'Recuperar':p.pub?(pgDirty(p)?'Publicada<span class=px> · editada</span>':'Publicada'):'Rascunho'}</span><span class=sp></span><button class=ic title="Mover para uma seção" aria-label="Mover para uma seção" onclick="grpMove('${p.id}')">⋯</button><button class=ic title="Duplicar página" onclick="dupPage('${p.id}')">⧉</button><button class=ic title=Excluir onclick="del('${p.id}')">🗑</button></div>${cardAddr(p)}</div>`}
+function cardH(p){const tu=thUrl(p);return`<div class=card data-id="${p.id}"${p.grp?` style="--pc:${(pages.find(g=>g.id==p.grp)||{}).color||''}"`:''}><div class="pv${tu?'':' gen'}" onclick="abrir('${p.id}')">${rlOf(p)?`<span class=rtg style="--r:${rlOf(p)[2]}">${esc(rlTag(p))}</span>`:''}${tu?`<img src="${tu}" alt="" loading=lazy decoding=async>`:''}</div><div class=ci><b>${esc(p.name)}</b><span class="tag ${p.pub?(!p.broken&&pgDirty(p)?'ok y':'ok'):''}"${p.pub&&!p.broken&&pgDirty(p)?' title="Há alterações ainda não publicadas"':''}>${p.stub?'Baixando…':p.broken?'Recuperar':p.pub?(pgDirty(p)?'Publicada<span class=px> · editada</span>':'Publicada'):'Rascunho'}</span><span class=sp></span><button class=ic title="Mover para uma seção" aria-label="Mover para uma seção" onclick="grpMove('${p.id}')">⋯</button><button class=ic title="Duplicar página" onclick="dupPage('${p.id}')">⧉</button><button class=ic title=Excluir onclick="del('${p.id}')">🗑</button></div>${cardAddr(p)}</div>`}
 function cards(){if(grpDr)return;const q=$('#q').value.toLowerCase(),l=pages.filter(p=>!p.kind&&!p.trash&&p.name.toLowerCase().includes(q)).sort(pgSort),G=grpL(),gr=$('#gr');
 gr.className='gw';const ids=new Set(G.map(g=>g.id)),loose=l.filter(p=>!ids.has(p.grp)),hd=G.length,sec=(id,c,nm,arr,edit)=>`<section class="gs" data-g="${id}" style="--c:${c}">${hd?`<div class="gh${edit?'':' g0'}">${edit?'<i class=gdot></i>':''}<b class=gname>${esc(nm)}</b><i class=gline></i>${edit?`<button class=gmore title="Editar seção" aria-label="Editar seção" onclick="grpEdit('${id}')">⋯</button>`:''}</div>`:''}<div class=grid>${arr.length?arr.map(cardH).join(''):hd?`<div class=gempty>${id?'Arraste páginas para cá':''}</div>`:`<div class=empty style="grid-column:1/-1"><p>Nenhuma página ainda. Cole um endereço acima para começar.</p></div>`}</div></section>`;
  let h=sec('','#6d7290','Sem grupo',loose,0);for(const g of G){const arr=l.filter(p=>p.grp==g.id);if(q&&!arr.length)continue;h+=sec(g.id,g.color||GCOL[0],g.name||'Seção',arr,1)}
@@ -310,8 +320,8 @@ function thApply(id){const c=document.querySelector('.card[data-id="'+id+'"] .pv
 function thNeed(p){if(!api.thMake||p.kind||p.trash||p.broken)return false;if(Date.now()-(THTRY.get(p.id)||0)<300000)return false;const has=TH.has(p.id),old=has&&(p.updated||0)>(THAT.get(p.id)||0)+4000&&(p.updated||0)<Date.now()+60000;
  return api.mobile?((!has&&!p.thumb)||old):((!has&&!p.thumb)||((p.ops||[]).length>0&&(!has||old)))}
 async function thKick(){if(thOn||!api.thMake||view!='list')return;thOn=1;try{
- for(const p of pages){if(p.kind||THCK.has(p.id))continue;THCK.add(p.id);try{const r=await api.thGet(p.id);if(r&&r.b64){thSet(p.id,r.b64,r.at);thApply(p.id)}}catch{}}
- const need=pages.filter(thNeed).sort((a,b)=>b.updated-a.updated).slice(0,8);
+ for(const p of pages){if(p.kind||p.stub||THCK.has(p.id))continue;THCK.add(p.id);try{const r=await api.thGet(p.id);if(r&&r.b64){thSet(p.id,r.b64,r.at);thApply(p.id)}}catch{}}
+ const need=pages.filter(x=>!x.stub&&thNeed(x)).sort((a,b)=>b.updated-a.updated).slice(0,8);
  for(const p of need){if(view!='list')break;THTRY.set(p.id,Date.now());const r=await api.thMake({id:p.id,name:p.name}).catch(()=>null);if(r&&r.ok&&r.b64){thSet(p.id,r.b64,r.at);thApply(p.id)}else{const c=document.querySelector('.card[data-id="'+p.id+'"] .pv');c&&c.classList.remove('gen')}}
  }finally{thOn=0}}
 async function del(id){const p=pages.find(x=>x.id==id);if(!p)return;if(!await askC('Mover para a lixeira?','"'+(p.name||'Sem nome')+'" sai da lista, mas você pode recuperar em até 30 dias.'+(p.pub?' A versão que está no ar continua lá, mas o endereço dela fica livre para outras páginas.':''),'Mover para a lixeira',1))return;const fd=trFree(p);p.trash=Date.now();sv();cards();toast(fd?'Movida para a lixeira. O endereço '+fd+' ficou livre':'Movida para a lixeira')}
@@ -330,7 +340,11 @@ function contH(){if(!api.mobile)return'';const L=lastGet();let p=pages.find(x=>x
  const tu=thUrl(p),st=dr?'Alterações não publicadas':p.pub?'Publicada':'Rascunho';
  return`<div class=cont data-id="${p.id}" onclick="abrir('${p.id}')" role=button aria-label="Continuar editando ${esc(p.name)}"><div class=cth>${tu?`<img src="${tu}" alt="">`:''}</div><div class=ctx><span class=csub>Continuar de onde parou</span><b>${esc(p.name)}</b><span class="cst ${dr?'y':p.pub?'g':''}"><i></i>${st} · ${hT(at)}</span></div><button class=cx aria-label="Dispensar" onclick="event.stopPropagation();contHide()">✕</button></div>`}
 function contHide(){const L=lastGet(),c=document.querySelector('.cont');let id=L.id;if(!id){const s=pages.filter(x=>!x.kind&&!x.trash&&(x.ops||[]).length).sort((a,b)=>b.updated-a.updated)[0];id=s&&s.id}lastSet({id,at:L.at||Date.now(),hide:1});c&&c.remove()}
-function abrir(id,keep){lastSet({id,at:Date.now()});rv=null;document.body.classList.remove('rv-on');if(!keep)fctx=null;cur=pages.find(p=>p.id==id);if(cur.broken)return recover(cur);cur.ops=cur.ops||[];tab='el';dev='m';prev=0;si=null;msi=null;scy=0;rs=0;sm=0;view='edit';render();if(cur.mirror&&cur.origin&&cur.chk!==60&&api.mheal){const q=cur;setTimeout(()=>{if(cur===q&&view=='edit')chkPage(q,1)},2500)}}
+async function dlOpen(id,keep){if(window.dlBusy)return;window.dlBusy=1;const p=pages.find(x=>x.id==id);let pill=document.createElement('div');pill.id='dlp';pill.textContent='Baixando “'+((p&&p.name)||'página')+'”…';document.body.appendChild(pill);const t=setInterval(()=>{const i=SYNC.info();if(i.busy&&/Baixando/.test(i.txt||''))pill.textContent=i.txt},300);
+ try{await SYNC.fetchPage(id)}catch(e){toast('Não consegui baixar: '+String(e.message||e).slice(0,100));window.dlBusy=0;clearInterval(t);pill.remove();return}
+ window.dlBusy=0;clearInterval(t);pill.remove();const q=pages.find(x=>x.id==id);if(q&&!q.stub)abrir0(id,keep)}
+function abrir(id,keep){const p=pages.find(x=>x.id==id);if(p&&p.stub&&cfg.sync&&cfg.sync.on)return dlOpen(id,keep);if(p&&p.stub)return toast('Esta página ainda não foi baixada');return abrir0(id,keep)}
+function abrir0(id,keep){lastSet({id,at:Date.now()});rv=null;document.body.classList.remove('rv-on');if(!keep)fctx=null;cur=pages.find(p=>p.id==id);if(cur.broken)return recover(cur);cur.ops=cur.ops||[];tab='el';dev='m';prev=0;si=null;msi=null;scy=0;rs=0;sm=0;view='edit';render();if(cur.mirror&&cur.origin&&cur.chk!==60&&api.mheal){const q=cur;setTimeout(()=>{if(cur===q&&view=='edit')chkPage(q,1)},2500)}}
 let scope='a',ffCur='',sessId=null,sessT=0,rd=[],orig=0,sclip=null,rv=null,pubGo=0;
 function sair2(){rv=null;document.body.classList.remove('rv-on');sv();sessId=null;rd=[];tbHide();orig=0;const c=fctx;fctx=null;if(c){fmId=c.fid;fsel=c.sid;go('fmap');fnFit()}else if(prodBack&&prodOf(prodBack)){pvId=prodBack;prodBack=null;go('pv')}else{prodBack=null;go('list')}}
 function sair(){if(rv)return rvClose();if(!dirty())return sair2();modal('Alterações não publicadas',`<p class=mut>Há alterações não publicadas: o site no ar ainda está como antes.</p>`,[['Ficar'],['Sair assim mesmo',sair2],['Publicar e sair',async()=>{pubGo=1;await pubClick();if(!dirty())sair2()},'b']])}
@@ -375,7 +389,7 @@ return it(!d.nolink.length,d.nolink.length?d.nolink.length+' botão(ões) sem de
 function auGo(i,k){const o=document.querySelector('.ov');o&&o.remove();tab='el';const a=auLast&&auLast[k||'nolink'];if(a&&a[i])tell({cmd:'goto',path:a[i].path})}
 async function auOpt(){const o=document.querySelector('.ov');o&&o.remove();toast('Otimizando imagens…');const r=await api.imgopt({id:cur.id});if(!r.ok)return toast('Erro: '+r.error);cur.updated=Date.now();sv();loadFr(1);toast(r.n?`${r.n} imagem(ns) otimizada(s) · ${r.saved>1e6?(r.saved/1e6).toFixed(1)+' MB':Math.round(r.saved/1000)+' KB'} a menos`:'Nenhuma imagem precisou de otimização')}
 async function auShow(){toast('Verificando…');const d=await auCollect();if(!d)return toast('Abra a página no editor para verificar');auLast=d;modal('Verificação da página',`<div class=aul2>${auHtml(d)}</div>`,[['Fechar',null,'b']])}
-function dupPage(id){const p=pages.find(x=>x.id==id);if(!p)return;const n=uid();api.mdup({from:id,to:n}).then(r=>{if(!r.ok)return toast('Erro: '+r.error);pages.push(Object.assign(JSON.parse(JSON.stringify(p)),{id:n,name:p.name+' (cópia)',pub:false,url:'',host:'',siteId:'',pubN:0,pubSig:null,pubOps:null,domain:p.domain||'',path:'',addr:0,pubAt:0,htDir:'',dns:null,updated:Date.now()}));sv();cards();toast('Página duplicada')})}
+function dupPage(id){const p=pages.find(x=>x.id==id);if(!p)return;if(p.stub)return toast('Espere terminar de baixar esta página');const n=uid();api.mdup({from:id,to:n}).then(r=>{if(!r.ok)return toast('Erro: '+r.error);pages.push(Object.assign(JSON.parse(JSON.stringify(p)),{id:n,name:p.name+' (cópia)',pub:false,url:'',host:'',siteId:'',pubN:0,pubSig:null,pubOps:null,domain:p.domain||'',path:'',addr:0,pubAt:0,htDir:'',dns:null,updated:Date.now()}));sv();cards();toast('Página duplicada')})}
 function pasteStyle(){if(!sclip)return toast('Copie o estilo de um elemento primeiro');st(Object.assign({},sclip.props,{animation:sclip.anim||'none'}));if(si&&!msi){si.cls=(si.cls||'').split(/\s+/).filter(x=>x&&!x.startsWith('slfx-')).concat(sclip.fx?sclip.fx.split(' '):[]).join(' ');tell({cmd:'attr',k:'class',v:si.cls})}toast('Estilo colado');setTimeout(side,150)}
 addEventListener('keydown',e=>{if(view!='edit'||!e.ctrlKey)return;const t=e.target;if(t&&/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))return;const k=e.key.toLowerCase();if(k=='z'&&!e.shiftKey){e.preventDefault();undo()}else if(k=='y'||(k=='z'&&e.shiftKey)){e.preventDefault();redo()}});
 const src=()=>`/m/${cur.id}/?${prev?'':'edit=1&'}${rv?'rv=1&':''}${isMob()&&!prev?'mob=1&':''}t=${Date.now()}`;
