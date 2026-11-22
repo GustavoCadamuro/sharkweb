@@ -193,8 +193,8 @@ if(api.mobile)SYNCO.shareIn=d=>{cfg.doms=Array.isArray(d.doms)?d.doms:[];if(d.di
 else SYNCO.shareOut=()=>({doms:domsList().map(x=>({h:x.h,dir:x.dir})),dir:(cfg.ht||{}).dir||''});
 const SYNC=makeSync(SYNCO);window.SLHUB={putBlobs:SYNC.putBlobs,hubJson:SYNC.hubJson};
 const slp=t=>new Promise(r=>setTimeout(r,t));
-function syncTxt(){const s=cfg.sync;if(!s||!s.on)return'';const i=SYNC.info();if(i.busy)return'☁ '+(i.txt||'Sincronizando...');if(i.err)return'⚠ Problema na sincronização (toque)';if(!i.last)return'☁ Conectando...';const m=Math.round((Date.now()-i.last)/60000);return'☁ Sincronizado'+(m<1?' agora':' há '+m+' min')}
-function syncLong(){const s=cfg.sync;if(!s||!s.on)return'';const i=SYNC.info();if(i.busy)return'Sincronizando agora...';if(i.err)return'Problema: '+i.err+' Tenta de novo sozinho.';if(!i.last)return'Conectando...';return'Última sincronização: '+new Date(i.last).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+(i.n?' · '+i.n+' alteração'+(i.n>1?'ões':'')+' recebida'+(i.n>1?'s':'')+' ou enviada'+(i.n>1?'s':''):' · tudo igual nos dois aparelhos')}
+function syncTxt(){const s=cfg.sync;if(!s||!s.on||!s.url||!s.key)return'☁ Sincronização desligada (toque)';const i=SYNC.info();if(i.busy)return'☁ '+(i.txt||'Sincronizando...');if(i.err)return'⚠ Problema na sincronização (toque)';if(!i.last)return'☁ Conectando...';const m=Math.round((Date.now()-i.last)/60000);return'☁ Sincronizado'+(m<1?' agora':' há '+m+' min')}
+function syncLong(){const s=cfg.sync;if(!s||!s.on||!s.url||!s.key)return'Desligada neste aparelho.';const i=SYNC.info();if(i.busy)return'Sincronizando agora...';if(i.err)return'Problema: '+i.err+' Tenta de novo sozinho.';if(!i.last)return'Conectando...';return'Última sincronização: '+new Date(i.last).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})+(i.n?' · '+i.n+' alteração'+(i.n>1?'ões':'')+' recebida'+(i.n>1?'s':'')+' ou enviada'+(i.n>1?'s':''):' · tudo igual nos dois aparelhos')}
 function syncRows(){return SYNC.report()}
 function syncRepHtml(){const r=syncRows();if(!r.length)return'<p class=mut style="margin:6px 0 0;font-size:12px">Ainda não sincronizou nenhuma página.</p>';const ic={ok:'✓',err:'⚠',busy:'✎'};return'<div id=syrep style="margin:8px 0 0;font-size:12px;max-height:260px;overflow:auto">'+r.map(x=>'<div style="padding:5px 0;border-top:1px solid rgba(255,255,255,.06);'+(x.s=='err'?'color:#fca5a5':'')+'">'+ic[x.s]+' <b>'+esc(x.name||x.id)+'</b>'+(x.funil?' <span class=mut>(funil)</span>':'')+(x.e?'<div class=mut style="font-size:11px;margin-top:2px">'+esc(x.e)+'</div>':'')+'</div>').join('')+'</div>'}
 function syncRepText(){return SYNC.report().map(x=>(x.s=='err'?'ERRO ':x.s=='busy'?'ABERTA ':'OK ')+(x.name||x.id)+' ['+x.id+']'+(x.e?' - '+x.e:'')).join('\n')+'\n'+(SYNC.info().err||'')}
@@ -219,7 +219,20 @@ if(!t.ok){cfg.sync.on=0;sc();conf();return fail('O servidor foi enviado, mas nã
 SYNC.reset();SYNC.start();conf();toast('Sincronização ativada. Copie o código do celular.')}
 function syncAgain(){cfg.sync.on=1;sc();SYNC.reset();SYNC.start();conf()}
 function syncOff(){cfg.sync.on=0;sc();SYNC.stop();conf();toast('Sincronização desligada neste aparelho')}
-function syncNow(){if(!(cfg.sync&&cfg.sync.on))return;toast('Sincronizando...');SYNC.run(true).then(()=>{syncUi();const e=SYNC.info().err;if(e)syncRepModal();else toast('Pronto: tudo sincronizado')})}
+async function syncNow(quiet){if(!(cfg.sync&&cfg.sync.on&&cfg.sync.url&&cfg.sync.key)){toast('A sincronização está desligada neste aparelho');go('cfg');return 0}
+ if(!quiet)toast('Sincronizando...');let t0=Date.now();try{await SYNC.run(true)}catch{}
+ while(SYNC.info().busy&&Date.now()-t0<45000)await new Promise(r=>setTimeout(r,250));
+ syncUi();const i=SYNC.info();if(i.err){if(quiet)toast('⚠ '+i.err.slice(0,90));else syncRepModal();return 0}
+ if(view=='list')cards();else if(view=='prod'||view=='fnl')render();toast('Atualizado ✓');return 1}
+/* puxar para baixo para atualizar (celular) */
+(function(){if(!api.mobile)return;let y0=0,on=0,d=0,el=null,busy=0;
+ const top=()=>{let e=document.querySelector('#main .pad')||document.querySelector('#main');while(e&&e!==document.body){const o=getComputedStyle(e).overflowY;if(/(auto|scroll)/.test(o)&&e.scrollHeight>e.clientHeight+2)return e.scrollTop<=0;e=e.parentElement}return(document.scrollingElement.scrollTop||0)<=0};
+ const mk=()=>{if(!el){el=document.createElement('div');el.id='ptr';el.innerHTML='<i></i>';document.body.appendChild(el)}return el};
+ document.addEventListener('touchstart',e=>{on=0;d=0;if(busy||grpDr||e.touches.length!=1||document.querySelector('.ov')||!['list','prod','pv','fnl','dash','cfg'].includes(view))return;if(!top())return;y0=e.touches[0].clientY;on=1},{passive:true});
+ document.addEventListener('touchmove',e=>{if(!on||grpDr)return;d=e.touches[0].clientY-y0;if(d<=0){if(el)el.style.opacity=0;return}if(d<12)return;const x=mk();x.className='';x.style.opacity=Math.min(1,d/70);x.style.transform='translate(-50%,'+Math.min(d*.55,64)+'px)';x.firstChild.style.transform='rotate('+d*4+'deg)';x.classList.toggle('rdy',d>=75)},{passive:true});
+ document.addEventListener('touchend',async()=>{if(!on)return;on=0;if(!el)return;if(d>=75&&!busy){busy=1;el.style.transform='translate(-50%,56px)';el.style.opacity=1;el.classList.add('spin');try{await syncNow(1)}finally{busy=0;el.className='';el.style.opacity=0;el.style.transform='translate(-50%,0)'}}else{el.style.opacity=0;el.style.transform='translate(-50%,0)'}d=0});
+ document.addEventListener('touchcancel',()=>{on=0;if(el)el.style.opacity=0});
+})();
 function syncCopy(){try{navigator.clipboard.writeText(SYNC.encode(cfg.sync)).then(()=>toast('Código copiado. Cole no celular e não compartilhe com ninguém.'),()=>toast('Não consegui copiar'))}catch{toast('Não consegui copiar')}}
 async function syncPair(){const c=SYNC.decode(($('#syc')||{}).value);if(!c)return toast('Código inválido. Copie de novo no computador.');cfg.sync={on:1,url:c.url,key:c.key};sc();const t=await SYNC.test();if(!t.ok){cfg.sync.on=0;sc();return fail('Não consegui conectar',t.error||'sem resposta')}SYNC.reset();SYNC.start();conf();toast('Conectado. Baixando suas páginas...')}
 async function syncUpgrade(){const s=cfg.sync;if(api.mobile||!s||!s.on||!s.folder||!s.dom||!htOk())return;const t=await SYNC.test();if(!t.ok||(t.v||1)>=4)return;const d=domsList().find(x=>x.h==s.dom);if(!d)return;const r=await api.sfInstall({h:cfg.ht,dir:d.dir,folder:s.folder,key:s.key});toast(r.ok?'Ponto de encontro atualizado':'Não consegui atualizar o ponto de encontro: '+r.error)}
