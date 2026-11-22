@@ -32,6 +32,7 @@
   const P = d => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + d + '</svg>';
   const IC = {
     pages: P('<rect x="5" y="3" width="14" height="18" rx="3.2"/><path d="M9 8h6M9 12h6M9 16h3"/>'),
+    prod: P('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
     funnel: P('<path d="M3.5 4.5h17l-6.6 7.9V19l-3.8 1.8v-8.4z"/>'),
     dash: P('<path d="M5.5 20v-7M12 20V5M18.5 20v-10"/>'),
     cfg: P('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>'),
@@ -62,7 +63,7 @@
   };
 
   /* ---------- navegação de baixo (páginas / funis / painel / config) ---------- */
-  const NAV = { list: ['pages', 'Páginas'], fnl: ['funnel', 'Funis'], dash: ['dash', 'Painel'], cfg: ['cfg', 'Config.'] };
+  const NAV = { list: ['pages', 'Páginas'], prod: ['prod', 'Produtos'], fnl: ['funnel', 'Funis'], dash: ['dash', 'Painel'], cfg: ['cfg', 'Config.'] };
   function nav() {
     $$('#side .nav').forEach(n => {
       if (n.dataset.mi) return; const k = NAV[n.dataset.v]; if (!k) return;
