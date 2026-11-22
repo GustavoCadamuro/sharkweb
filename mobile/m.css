@@ -55,7 +55,7 @@ table{font-size:12px}
 .cloner button.b{flex:1 1 0;min-width:0;font-size:16px}
 .cloner button.b2{flex:0 0 auto;padding:11px 14px}
 #q{max-width:none!important;width:100%;min-height:46px;border-radius:14px}
-#gr.grid,#gr .gs .grid{grid-template-columns:1fr;gap:10px}
+#gr .gs .grid{grid-template-columns:1fr;gap:14px}#gr .gs{margin-bottom:30px}.card.ib{box-shadow:0 -8px 0 -4px #4c8dff}.card.ia{box-shadow:0 8px 0 -4px #4c8dff}
 #gr .card{display:grid;grid-template-columns:94px minmax(0,1fr);grid-template-areas:"pv ci" "pv cu";grid-template-rows:1fr auto;align-items:stretch;border-radius:16px;min-height:98px}
 #gr .card:hover{transform:none}
 #gr .card .pv{grid-area:pv;height:auto;min-height:98px;width:94px;background:#1a1c26 url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32' viewBox='0 0 24 24' fill='none' stroke='%23475070' stroke-width='1.7' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='3' width='14' height='18' rx='3.2'/%3E%3Cpath d='M9 8h6M9 12h6M9 16h3'/%3E%3C/svg%3E") center/30px no-repeat}
