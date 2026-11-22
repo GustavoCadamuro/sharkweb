@@ -130,6 +130,10 @@ function makeSync(E){
       const R=ij.pages,busy=E.busy?E.busy():null,pg=E.getPages(),L={};
       pg.forEach(p=>{if(p&&p.id)L[p.id]=p});
       const ids=[...new Set([...Object.keys(L),...Object.keys(R),...Object.keys(S.tomb)])];
+      const cost=id=>{const l=L[id],r=R[id];if(l&&l.kind)return 0;if(r&&!r.del&&r.f==EMPTYF)return 0;if(!l&&r&&!r.del)return 2;return 1};
+      ids.sort((a,b)=>cost(a)-cost(b));
+      const LS={};await pool(ids.filter(id=>L[id]&&!(Array.isArray(busy)?busy.indexOf(id)>=0:id===busy)),async id=>{try{LS[id]=await lstate(L[id])}catch{}},6);
+      const lstate0=lstate,lst=l=>LS[l.id]||lstate0(l);
       let i=0;
       for(const id of ids){
         i++;const isBusy=Array.isArray(busy)?busy.indexOf(id)>=0:id===busy;
@@ -141,9 +145,9 @@ function makeSync(E){
             if(S.tomb[id]&&b&&r.m==b.r.m&&r.f==b.r.f){const x=await call('del','',{id,ifm:r.m,iff:r.f});if(x.status==200){delete S.tomb[id];delete S.base[id];delete rep()[id];changed++}else again=true;continue}
             status('Baixando página '+i+' de '+ids.length+'...',1);const pgn=await pull(id,id,r);changed++;n++;mark(id,pgn&&pgn.name,'ok');E.onChange&&E.onChange();continue}
           if(!l&&!r){delete S.tomb[id];if(rdel)delete S.base[id];continue}
-          if(l&&rdel){if(isBusy)continue;const ls=await lstate(l);if(b&&ls.m==b.l.m&&ls.f==b.l.f){await A.mdel(id);const arr=E.getPages().filter(x=>x.id!=id);E.setPages(arr);await A.save(arr);delete S.base[id];delete rep()[id];changed++;E.onChange&&E.onChange()}else{await push(l,null);changed++}continue}
+          if(l&&rdel){if(isBusy)continue;const ls=await lst(l);if(b&&ls.m==b.l.m&&ls.f==b.l.f){await A.mdel(id);const arr=E.getPages().filter(x=>x.id!=id);E.setPages(arr);await A.save(arr);delete S.base[id];delete rep()[id];changed++;E.onChange&&E.onChange()}else{await push(l,null);changed++}continue}
           if(l&&r){
-            const ls=await lstate(l);
+            const ls=await lst(l);
             if(!l.kind&&!Object.keys(ls.man).length&&r.f!=EMPTYF){
               if(isBusy)continue;
               await pull(id,id,r);changed++;n++;mark(id,l.name,'ok','Estava sem arquivos neste aparelho; recuperei do ponto de encontro.');E.onChange&&E.onChange();continue}
@@ -170,7 +174,7 @@ function makeSync(E){
     finally{running=false;if(again){again=false;kick(1500)}}
   }
   function kick(ms){if(!cfgS())return;clearTimeout(kt);kt=setTimeout(()=>run(false),ms==null?1500:ms)}
-  function start(){clearInterval(timer);if(!cfgS())return;timer=setInterval(()=>kick(0),10000);kick(1500)}
+  function start(){clearInterval(timer);if(!cfgS())return;timer=setInterval(()=>kick(0),5000);kick(800)}
   function stop(){clearInterval(timer);timer=null;clearTimeout(kt)}
   function flush(){if(cfgS())return run(true)}
   function tomb(id){if(!cfgS())return;S.tomb[id]=Date.now();save();kick(1500)}
@@ -219,7 +223,7 @@ function syncNow(){if(!(cfg.sync&&cfg.sync.on))return;toast('Sincronizando...');
 function syncCopy(){try{navigator.clipboard.writeText(SYNC.encode(cfg.sync)).then(()=>toast('Código copiado. Cole no celular e não compartilhe com ninguém.'),()=>toast('Não consegui copiar'))}catch{toast('Não consegui copiar')}}
 async function syncPair(){const c=SYNC.decode(($('#syc')||{}).value);if(!c)return toast('Código inválido. Copie de novo no computador.');cfg.sync={on:1,url:c.url,key:c.key};sc();const t=await SYNC.test();if(!t.ok){cfg.sync.on=0;sc();return fail('Não consegui conectar',t.error||'sem resposta')}SYNC.reset();SYNC.start();conf();toast('Conectado. Baixando suas páginas...')}
 async function syncUpgrade(){const s=cfg.sync;if(api.mobile||!s||!s.on||!s.folder||!s.dom||!htOk())return;const t=await SYNC.test();if(!t.ok||(t.v||1)>=4)return;const d=domsList().find(x=>x.h==s.dom);if(!d)return;const r=await api.sfInstall({h:cfg.ht,dir:d.dir,folder:s.folder,key:s.key});toast(r.ok?'Ponto de encontro atualizado':'Não consegui atualizar o ponto de encontro: '+r.error)}
-document.addEventListener('visibilitychange',()=>{if(document.hidden)SYNC.flush();else SYNC.kick(300)});addEventListener('pagehide',()=>{SYNC.flush()});addEventListener('focus',()=>SYNC.kick(300));
+document.addEventListener('visibilitychange',()=>{if(document.hidden)SYNC.flush();else SYNC.kick(300)});addEventListener('online',()=>SYNC.kick(200));addEventListener('focus',()=>SYNC.kick(200));addEventListener('pagehide',()=>{SYNC.flush()});addEventListener('focus',()=>SYNC.kick(300));
 
 const DV={m:['Celular',390],t:['Tablet',768],d:['PC','100%']},fw=()=>{const w=DV[dev][1];return typeof w=='number'?w+'px':w};
 const isAp=d=>/^[^.]+(\.(com|net|org)\.br|\.[a-z]{2,})$/i.test(d.replace(/^www\./i,'')),cp=t=>{navigator.clipboard.writeText(t);toast('Copiado')};
