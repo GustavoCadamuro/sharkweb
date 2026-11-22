@@ -18,8 +18,12 @@
     get cur() { try { return cur } catch (e) { return null } },
     get sm() { try { return sm } catch (e) { return 0 } },
     get rs() { try { return rs } catch (e) { return 0 } },
-    get orig() { try { return orig } catch (e) { return 0 } }
+    get orig() { try { return orig } catch (e) { return 0 } },
+    get dev() { try { return dev } catch (e) { return 'm' } },
+    set dev(v) { try { dev = v } catch (e) { } }
   };
+  const LANDQ = window.matchMedia ? window.matchMedia('(orientation:landscape) and (max-height:520px)') : { matches: false };
+  const LAND = () => !!LANDQ.matches;
   const call = (n, ...a) => { try { const f = window[n]; return typeof f == 'function' ? f(...a) : undefined } catch (e) { console.error(n, e) } };
   const tellFr = m => { try { if (typeof tell == 'function') tell(m) } catch (e) { } };
   const mk = (tag, cls, html) => { const e = document.createElement(tag); if (cls) e.className = cls; if (html != null) e.innerHTML = html; return e };
@@ -46,6 +50,7 @@
     multi: P('<rect x="3.5" y="3.5" width="11" height="11" rx="2" stroke-dasharray="3 2.6"/><path d="M11.5 11.5l8.5 3.2-3.8 1.7-1.7 3.8z" fill="currentColor"/>'),
     resize: P('<path d="M14.5 3.5h6v6M9.5 20.5h-6v-6M20.5 3.5L14 10M3.5 20.5L10 14"/>'),
     upload: P('<path d="M12 16V4.5M7 9l5-5 5 5"/><path d="M4.5 19.5h15"/>'),
+    ad: P('<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="M20.5 15.5l-4.8-4.8L7 19.5"/>'),
     review: P('<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M3.8 6.6l1.3 1.3 2.2-2.6M3.8 12.1l1.3 1.3 2.2-2.6M3.8 17.6l1.3 1.3 2.2-2.6"/>'),
     up: P('<path d="M12 19V5M5.5 11.5L12 5l6.5 6.5"/>'),
     down: P('<path d="M12 5v14M5.5 12.5L12 19l6.5-6.5"/>'),
@@ -116,7 +121,7 @@
   const stageH = () => { const ed = $('.ed'); return ed ? ed.getBoundingClientRect().height : innerHeight };
   function peekH(el) { const hd = el.querySelector('.sphd'), eh = el.querySelector('.eh'); return Math.ceil((hd ? hd.offsetHeight : 28) + (eh ? eh.offsetHeight : 130) + 6) }
   function targetH(s, el) {
-    if (s == 'none') return 0;
+    if (s == 'none' || LAND()) return 0;
     if (kbOn || document.body.classList.contains('mob-pal')) return 0;
     if (s == 'peek') return peekH(el);
     if (s == 'open') return Math.min(innerHeight * .54, 540);
@@ -135,7 +140,7 @@
   function padSync(force) {
     const el = sp(); const px = el && !A.rv ? Math.round(targetH(S, el)) : 0;
     if (px === lastPad && !force) return; lastPad = px;
-    tellFr({ cmd: 'pad', px });
+    tellFr({ cmd: 'pad', px: Math.round(px / (FS || 1)) });
   }
   window.SL_swap = () => { lastPad = -1; setTimeout(() => padSync(true), 30) };   // página recarregada: manda o espaço de novo
   function decorate(el) {
@@ -274,6 +279,7 @@
       rows.push(['rs', IC.resize, 'Redimensionar itens', 'Arraste as bolinhas do item escolhido', A.rs]);
     }
     rows.push(['pub', IC.upload, 'Publicação e endereço', 'Domínio, link da página e opções de envio']);
+    if (!pr && !fc) rows.push(['ad', IC.ad, 'Imagens para anúncios', 'Prontas para Facebook e Instagram']);
     if (fc && !pr) rows.push(['fn', IC.funnel, 'Etapa do funil', 'Opções desta etapa']);
     rows.push(['exit', IC.pages, fc ? 'Voltar ao mapa do funil' : 'Voltar às páginas', 'Suas alterações já ficam salvas', 0, 'sep']);
     const o = mk('div', 'ov mvov'), m = mk('div', 'md msheet', '<h3>Mais opções</h3><div class="mrows">' + rows.map(r => '<button type="button" class="mrow ' + (r[5] || '') + '" data-a="' + r[0] + '"><i>' + r[1] + '</i><div><b>' + r[2] + '</b><span>' + r[3] + '</span></div>' + (r[4] ? '<em>Ligado</em>' : '') + '</button>').join('') + '</div>');
@@ -284,7 +290,7 @@
       const a = b.dataset.a; o.remove();
       setTimeout(() => {
         if (a == 'rv') call('rvOpen'); else if (a == 'hist') call('histToggle'); else if (a == 'orig') call('origTog'); else if (a == 'sm') call('togSm'); else if (a == 'rs') call('togRs');
-        else if (a == 'pub') { A.tab = 'pub'; call('side'); setS('open') } else if (a == 'fn') { A.tab = 'fn'; call('side'); setS('open') } else if (a == 'exit') call('sair');
+        else if (a == 'ad') call('adOpen'); else if (a == 'pub') { A.tab = 'pub'; call('side'); setS('open') } else if (a == 'fn') { A.tab = 'fn'; call('side'); setS('open') } else if (a == 'exit') call('sair');
       }, 30);
     });
   }
@@ -301,6 +307,38 @@
     const b = $('#orb'); if (!b || b.__m) return; b.__m = 1;
     b.textContent = 'Página original · toque aqui para voltar'; b.onclick = () => call('origTog');
   }
+
+  /* ---------- tamanho da prévia: Celular · Tablet · PC (só no modo Visualizar; no editor a página usa sempre o tamanho real do aparelho) ---------- */
+  const DVW = { m: 0, t: 768, d: 1280 }, DVL = { m: 'Celular', t: 'Tablet', d: 'PC' }, DVI = {
+    m: P('<rect x="7" y="2.5" width="10" height="19" rx="2.6"/><path d="M10.8 18.6h2.4"/>'),
+    t: P('<rect x="3" y="4.5" width="18" height="15" rx="2.6"/><path d="M17.8 11v2"/>'),
+    d: P('<rect x="2.5" y="4" width="19" height="12.5" rx="2"/><path d="M9 20.5h6M12 16.5v4"/>')
+  };
+  let fitKey = '', FS = 1;
+  function devSync() {
+    const st = $('.ed .stage'), fr = $('#fr');
+    if (!st || !fr) { fitKey = ''; if (FS !== 1) { FS = 1; padSync(true) } return }
+    const k = A.prev ? (DVW[A.dev] != null ? A.dev : 'm') : 'm', W = DVW[k] || 0;
+    let pill = $('#dvpill');
+    if (A.prev && !pill) {
+      pill = mk('div'); pill.id = 'dvpill'; pill.setAttribute('role', 'group'); pill.setAttribute('aria-label', 'Tamanho da tela');
+      ['m', 't', 'd'].forEach(x => { const b = mk('button', '', DVI[x] + '<span>' + DVL[x] + '</span>'); b.type = 'button'; b.dataset.k = x; b.setAttribute('aria-label', DVL[x]); b.onclick = () => { A.dev = x; devSync() }; pill.append(b) });
+      st.append(pill);
+    } else if (!A.prev && pill) pill.remove();
+    if (pill) pill.querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.k === k));
+    const sw = st.clientWidth, sh = st.clientHeight, key = k + '|' + sw + '|' + sh + '|' + (st.classList.contains('vw') ? 1 : 0);
+    if (key === fitKey) return; fitKey = key;
+    const old = FS;
+    if (!W) { st.classList.remove('vw'); ['--vw', '--vh', '--vs', '--vl'].forEach(v => st.style.removeProperty(v)); FS = 1 }
+    else {
+      const s = Math.min(1, sw / W);
+      st.classList.add('vw'); st.style.setProperty('--vw', W + 'px'); st.style.setProperty('--vh', Math.ceil(sh / s) + 'px'); st.style.setProperty('--vs', String(s)); st.style.setProperty('--vl', Math.max(0, Math.round((sw - W * s) / 2)) + 'px'); FS = s;
+    }
+    fitKey = k + '|' + sw + '|' + sh + '|' + (st.classList.contains('vw') ? 1 : 0);
+    if (old !== FS) padSync(true);
+  }
+  const onTurn = () => { fitKey = ''; lastPad = -1; setTimeout(() => { try { devSync(); padSync(true); dockSync() } catch (e) { } }, 60) };
+  if (LANDQ.addEventListener) LANDQ.addEventListener('change', onTurn); window.addEventListener('orientationchange', onTurn); window.addEventListener('resize', () => { fitKey = ''; devSync() });
 
   /* ---------- teclado na tela ---------- */
   let base = innerHeight, bw = innerWidth;
@@ -335,7 +373,7 @@
   /* ---------- varredura (leve) quando a tela muda ---------- */
   let q = 0;
   const PH = 'Cole o endereço da página';
-  function tick() { nav(); hook(); hookF(); topbar(); dockBuild(); closers(); modeSync(); origSync(); statSync(); const cu = document.getElementById('cu'); if (cu && cu.placeholder != PH) cu.placeholder = PH; const el = sp(); if (el && !el.querySelector(':scope > .sphd')) afterSide() }
+  function tick() { nav(); hook(); hookF(); topbar(); dockBuild(); devSync(); closers(); modeSync(); origSync(); statSync(); const cu = document.getElementById('cu'); if (cu && cu.placeholder != PH) cu.placeholder = PH; const el = sp(); if (el && !el.querySelector(':scope > .sphd')) afterSide() }
   new MutationObserver(() => { if (q) return; q = requestAnimationFrame(() => { q = 0; try { tick() } catch (e) { console.error(e) } }) }).observe(document.body, { childList: true, subtree: true });
   document.addEventListener('DOMContentLoaded', tick); nav();
   function hookF() {
@@ -365,6 +403,7 @@
 
   /* ---------- botão voltar do Android ---------- */
   function back() {
+    if ($('#adv')) { call('adClose'); return true }
     const ov = $('.ov'); if (ov) { ov.remove(); return true }
     const hs = $('#hist'); if (hs) { hs.remove(); return true }
     if (A.rv) { call('rvClose'); return true }

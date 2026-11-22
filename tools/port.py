@@ -34,6 +34,6 @@ open(W + '/index.html', 'w', encoding='utf8').write(out)
 open(W + '/app.js', 'w', encoding='utf8').write(js)
 for f in ['speed.js', 'clonefix.js', 'm-core.js', 'm-ui.js', 'sw.js', 'boot.js', 'm.css', 'manifest.webmanifest']:
     if os.path.exists(M + '/' + f): shutil.copy(M + '/' + f, W + '/' + f)
-for f in ['patch.js', 'agent.js', 'diag.js', 'acorn.js']: shutil.copy(D + '/' + f, W + '/__sl/' + f)
+for f in ['patch.js', 'patch-x.js', 'agent.js', 'diag.js', 'acorn.js']: shutil.copy(D + '/' + f, W + '/__sl/' + f)
 shutil.copy(D + '/icon.png', W + '/icon.png')
 print('www gerado:', len(out), 'bytes html,', len(js), 'bytes js')

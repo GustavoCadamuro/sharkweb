@@ -38,7 +38,7 @@ var gb=false,gmo,tf=0;function guard(){if(gmo||edit||!ops.length)return;gmo=new 
 var hs;if(ops.length){hs=document.createElement('style');hs.textContent='html{visibility:hidden!important}';(document.head||document.documentElement).appendChild(hs)}
 function hasTxt(){var n=0,c=document.body.children;for(var i=0;i<c.length;i++){if(!NZ[c[i].nodeName]){n+=c[i].textContent.length;if(n>30)return true}}return false}
 function reveal(){if(hs){hs.remove();hs=null}}
-function fire(){if(done)return;done=true;tf=Date.now();if(mo)mo.disconnect();rvPrep();runAll();reveal();window.__SL_APPLIED=1;document.dispatchEvent(new Event('sl-applied'));if(!edit&&ops.length){guard();setTimeout(again,1200);setTimeout(again,3500)}}
+function fire(){if(done)return;done=true;tf=Date.now();if(mo)mo.disconnect();rvPrep();runAll();try{window.__SL_X&&window.__SL_X()}catch(x){}reveal();window.__SL_APPLIED=1;document.dispatchEvent(new Event('sl-applied'));if(!edit&&ops.length){guard();setTimeout(again,1200);setTimeout(again,3500)}}
 function ready(){if(!document.body)return false;for(var i=0;i<ops.length;i++){var o=ops[i];if(!(o.op=='ins'&&o.pos=='end')&&!el(o.path||[]))return false;if(o.op=='ins'||o.op=='rm'||o.op=='dup'||o.op=='mv')break}return true}
 var last=Date.now(),t0=Date.now(),iv;
 if(!ops.length){window.__SL_APPLIED=1}else{var NZ={SCRIPT:1,STYLE:1,LINK:1,IFRAME:1,NOSCRIPT:1,META:1};function real(l){for(var j=0;j<l.length;j++)if(l[j].nodeType==1&&!NZ[l[j].nodeName])return true;return false}

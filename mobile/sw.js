@@ -23,7 +23,7 @@ async function page(id, path, u) {
   let ops = '[]'; if (!orig) { const o = await fGet(id, '/_sl_ops.json'); if (o) ops = td.decode(o) }
   const sp = new URLSearchParams(u.search); sp.set('__sl', id);
   const fix = `<script>try{history.replaceState(null,'',${JSON.stringify(path + '?' + sp.toString() + u.hash)})}catch(e){}<\/script>`;
-  const x = (q.has('diag') ? '<script src="/__sl/diag.js"><\/script>' : '') + fix + '<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>' + `<script>${edit ? 'window.__SL_EDIT=1;' : ''}window.__SL_OPS=${ops.replace(/</g, '\\u003c')}<\/script><script src="/__sl/patch.js"><\/script>` + (edit ? '<script src="/__sl/agent.js"><\/script>' : '');
+  const x = (q.has('diag') ? '<script src="/__sl/diag.js"><\/script>' : '') + fix + '<style>html{scrollbar-width:none}::-webkit-scrollbar{display:none}</style>' + `<script>${edit ? 'window.__SL_EDIT=1;' : ''}window.__SL_OPS=${ops.replace(/</g, '\\u003c')}<\/script><script src="/__sl/patch.js"><\/script>` + (/data-sl-x/.test(ops) ? '<script src="/__sl/patch-x.js"><\/script>' : '') + (edit ? '<script src="/__sl/agent.js"><\/script>' : '');
   let h = td.decode(b); h = /<head[^>]*>/i.test(h) ? h.replace(/<head[^>]*>/i, m => m + x) : x + h;
   return new Response(h, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
 }

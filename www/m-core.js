@@ -42,15 +42,29 @@
   async function injectInline(html, id, ops) {
     if (!/<meta[^>]+name=["']google["'][^>]*notranslate/i.test(html) && !/<meta[^>]+notranslate[^>]*name=["']google["']/i.test(html)) html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + '<meta name="google" content="notranslate">') : '<meta name="google" content="notranslate">' + html;
     html = html.replace(/<html\b([^>]*)>/i, (m, a) => /\btranslate\s*=/i.test(a) ? m : '<html' + a + ' translate="no">');
-    const x = `<script>window.__SL_OPS=${asciiJs((ops || await opsOf(id)).replace(/</g, '\\u003c'))}<\/script><script>${await rt('patch.js')}<\/script>`;
+    const oj = ops || await opsOf(id);
+    const x = `<script>window.__SL_OPS=${asciiJs(oj.replace(/</g, '\\u003c'))}<\/script><script>${await rt('patch.js')}<\/script>` + (/data-sl-x/.test(oj) ? `<script>${await rt('patch-x.js')}<\/script>` : '');
     return /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + x) : x + html;
+  }
+  /* v63: título/descrição/imagem/ícone do painel "Título e compartilhamento" substituem os da página original (só no que foi preenchido) */
+  function seoStrip(h, inject) {
+    const m = /<!--slseo ([a-z]+)-->/.exec(inject || ''); if (!m) return h;
+    const g = m[1], i = h.search(/<\/head>/i); if (i < 0) return h; let hd = h.slice(0, i); const rest = h.slice(i);
+    const meta = re => { hd = hd.replace(/<meta\b[^>]*>/gi, x => re.test(x) ? '' : x) }, nm = n => new RegExp('\\b(?:property|name)\\s*=\\s*["\']?(?:' + n + ')["\']?(?=[\\s/>"\'])', 'i');
+    const rel = x => { const r = /\brel\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(x); return ((r && (r[1] || r[2] || r[3])) || '').toLowerCase().split(/\s+/) };
+    if (g.includes('t')) { hd = hd.replace(/<title\b[^>]*>[\s\S]*?<\/title>/gi, ''); meta(nm('og:title|twitter:title')) }
+    if (g.includes('d')) meta(nm('description|og:description|twitter:description'));
+    if (g.includes('m')) meta(nm('og:image(?::[a-z_]+)?|twitter:image(?::alt)?|twitter:card'));
+    if (g.includes('u')) meta(nm('og:url'));
+    if (g.includes('i') || g.includes('u')) hd = hd.replace(/<link\b[^>]*>/gi, x => { const r = rel(x); return (g.includes('i') && (r.includes('icon') || r.includes('apple-touch-icon') || r.includes('apple-touch-icon-precomposed'))) || (g.includes('u') && r.includes('canonical')) ? '' : x });
+    return hd + rest;
   }
   async function siteFiles(id, inject, ops) {
     const F = {};
     for (const p of (await fKeys(id)).sort()) {
       if (p.startsWith('/_sl')) continue;
       let b = await fGet(id, p);
-      if (p == '/index.html') { let h = await injectInline(td.decode(b), id, ops ? JSON.stringify(ops) : null); if (inject) h = h.replace(/<\/head>/i, () => inject + '</head>'); h = fixCharset(h); b = te.encode(h) }
+      if (p == '/index.html') { let h = await injectInline(td.decode(b), id, ops ? JSON.stringify(ops) : null); if (inject) { h = seoStrip(h, inject); h = h.replace(/<\/head>/i, () => inject + '</head>') } h = fixCharset(h); b = te.encode(h) }
       F[p] = b;
     }
     if (!F['/_redirects']) F['/_redirects'] = te.encode('/*  /index.html  200\n');
@@ -243,6 +257,34 @@
   const ftpOpts = h => { const m = String(h.host || '').trim().match(/^(.*?)(?::(\d+))?$/); return { host: m[1], port: +m[2] || 21, user: String(h.user || '').trim(), pass: String(h.pass || ''), secure: h.tls === 0 ? false : true } };
 
   /* ---------- zip / compartilhar ---------- */
+  /* v63: backup em .zip sem compressão, gravado em pedaços (o celular nunca segura tudo na memória), e leitura/restauração */
+  const CRCT = (() => { const t = new Uint32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0 } return t })();
+  const crcUp = (c, b) => { let x = (~c) >>> 0; for (let i = 0; i < b.length; i++) x = CRCT[(x ^ b[i]) & 255] ^ (x >>> 8); return (~x) >>> 0 };
+  async function bkBuild(items, sink) {
+    if (items.length > 60000) throw new Error('arquivos demais para um backup só');
+    let off = 0; const cd = [], W = async b => { for (let i = 0; i < b.length; i += 524288) await sink(b.subarray(i, Math.min(b.length, i + 524288))); off += b.length };
+    for (const it of items) {
+      const u8 = it.u8 || await fGet(it.id, it.p); if (!u8) continue; if (off > 3.9e9 || u8.length > 3.5e9) throw new Error('o backup ficou grande demais');
+      const nb = te.encode(it.n), crc = crcUp(0, u8), h = new DataView(new ArrayBuffer(30)), d = new Date(), tm = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1), dd = (Math.max(0, d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+      h.setUint32(0, 0x04034b50, true); h.setUint16(4, 20, true); h.setUint16(6, 0x0800, true); h.setUint16(10, tm, true); h.setUint16(12, dd, true); h.setUint32(14, crc, true); h.setUint32(18, u8.length, true); h.setUint32(22, u8.length, true); h.setUint16(26, nb.length, true);
+      const start = off; await W(new Uint8Array(h.buffer)); await W(nb); await W(u8); cd.push({ nb, crc, sz: u8.length, start, tm, dd });
+    }
+    const cds = off;
+    for (const e of cd) { const c = new DataView(new ArrayBuffer(46)); c.setUint32(0, 0x02014b50, true); c.setUint16(4, 20, true); c.setUint16(6, 20, true); c.setUint16(8, 0x0800, true); c.setUint16(12, e.tm, true); c.setUint16(14, e.dd, true); c.setUint32(16, e.crc, true); c.setUint32(20, e.sz, true); c.setUint32(24, e.sz, true); c.setUint16(28, e.nb.length, true); c.setUint32(42, e.start, true); await W(new Uint8Array(c.buffer)); await W(e.nb) }
+    const z = new DataView(new ArrayBuffer(22)); z.setUint32(0, 0x06054b50, true); z.setUint16(8, cd.length, true); z.setUint16(10, cd.length, true); z.setUint32(12, off - cds, true); z.setUint32(16, cds, true); await W(new Uint8Array(z.buffer));
+    return { files: cd.length, size: off };
+  }
+  const zrd = async (f, a, b) => new Uint8Array(await f.slice(a, b).arrayBuffer());
+  async function zipIndex(f) {
+    const bad = () => new Error('Este arquivo não é um backup do Shark Lab.'), sz = f.size; if (sz < 22) throw bad();
+    const tl = Math.min(sz, 65557), tb = await zrd(f, sz - tl, sz), tv = new DataView(tb.buffer); let p = tl - 22; while (p >= 0 && tv.getUint32(p, true) !== 0x06054b50) p--; if (p < 0) throw bad();
+    const n = tv.getUint16(p + 10, true), cs = tv.getUint32(p + 12, true), co = tv.getUint32(p + 16, true); if (n == 0xffff || co == 0xffffffff || co + cs > sz) throw bad();
+    const cb = await zrd(f, co, co + cs), cv = new DataView(cb.buffer), ent = []; let q = 0;
+    for (let i = 0; i < n; i++) { if (q + 46 > cb.length || cv.getUint32(q, true) !== 0x02014b50) throw bad(); const me = cv.getUint16(q + 10, true), crc = cv.getUint32(q + 16, true), uz = cv.getUint32(q + 24, true), nl = cv.getUint16(q + 28, true), el = cv.getUint16(q + 30, true), cl = cv.getUint16(q + 32, true), lo = cv.getUint32(q + 42, true); ent.push({ nm: td.decode(cb.subarray(q + 46, q + 46 + nl)), me, crc, uz, lo }); q += 46 + nl + el + cl }
+    return ent;
+  }
+  async function zipData(f, e) { const h = new DataView((await zrd(f, e.lo, e.lo + 30)).buffer); if (h.getUint32(0, true) !== 0x04034b50) throw new Error('arquivo de backup inválido'); const s = e.lo + 30 + h.getUint16(26, true) + h.getUint16(28, true); return zrd(f, s, s + e.uz) }
+  let BKF = null;
   async function zipOf(F) { const z = new JSZip(); for (const p in F) z.file(p.replace(/^\/+/, ''), F[p]); return z.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }) }
   async function saveOut(name, u8, mime) {
     if (NATIVE()) {
@@ -390,6 +432,50 @@ Regras:
     return { ok: true, rounds, scanned, fixed, failed: failed.slice(0, 30), syntax, syntaxLeft: left, noOrigin: !O, errs: ((last && last.diag.errs) || []).slice(0, 8), logs: [] };
   }
 
+  /* ---------- miniatura (v63): cartão com a imagem principal e o título da página ---------- */
+  async function thPoster(id, name) {
+    const hb = await fGet(id, '/index.html'); if (!hb) return null;
+    const html = td.decode(hb); let doc; try { doc = new DOMParser().parseFromString(html, 'text/html') } catch (e) { return null }
+    const meta = k => { const e = doc.querySelector('meta[property="' + k + '"],meta[name="' + k + '"]'); return (e && e.getAttribute('content')) || '' };
+    const hh = doc.querySelector('h1') || doc.querySelector('h2');
+    let title = ((hh && hh.textContent) || meta('og:title') || doc.title || name || '').replace(/\s+/g, ' ').trim();
+    if (title.length > 90) title = title.slice(0, 88).replace(/\s+\S*$/, '') + '…';
+    const cands = [], seen = new Set();
+    const add = u => {
+      if (!u) return; u = String(u).trim(); if (!u || /^(data:|blob:|javascript:)/i.test(u)) return;
+      if (/\.svg(\?|#|$)/i.test(u) || /(sprite|logo|icon|favicon|avatar|pixel|1x1|spacer|blank|loader|placeholder)/i.test(u)) return;
+      let p; try { p = new URL(u, 'https://x.invalid/').pathname } catch (e) { return } try { p = decodeURIComponent(p) } catch (e) { }
+      if (seen.has(p)) return; seen.add(p); cands.push(p);
+    };
+    add(meta('og:image')); add(meta('twitter:image'));
+    doc.querySelectorAll('img').forEach(i => { const w = +i.getAttribute('width') || 0; if (w && w < 140) return; add(i.getAttribute('src') || i.getAttribute('data-src') || i.getAttribute('data-lazy-src')) });
+    { let m, n = 0; const re = /url\(\s*["']?([^"')]+\.(?:jpe?g|png|webp|avif))[^)]*\)/gi; while ((m = re.exec(html)) && n++ < 12) add(m[1]) }
+    let img = null;
+    for (const p of cands.slice(0, 10)) {
+      const b = await fGet(id, p); if (!b || b.length < 6000) continue;
+      try { const bm = await createImageBitmap(new Blob([b])); if (bm.width >= 280 && bm.height >= 160) { img = bm; break } if (bm.close) bm.close() } catch (e) { }
+    }
+    const W = 640, H = 450, cv = document.createElement('canvas'); cv.width = W; cv.height = H; const c = cv.getContext('2d');
+    let hs = 0; for (const ch of String(id)) hs = (hs * 31 + ch.charCodeAt(0)) >>> 0; const hue = [212, 226, 248, 262, 196, 280][hs % 6];
+    const g = c.createLinearGradient(0, 0, W, H); g.addColorStop(0, 'hsl(' + hue + ',62%,27%)'); g.addColorStop(1, 'hsl(' + ((hue + 28) % 360) + ',58%,9%)'); c.fillStyle = g; c.fillRect(0, 0, W, H);
+    if (img) {
+      const s = Math.max(W / img.width, H / img.height), dw = img.width * s, dh = img.height * s;
+      c.drawImage(img, (W - dw) / 2, -(dh - H) * 0.22, dw, dh);
+      const o = c.createLinearGradient(0, H * 0.3, 0, H); o.addColorStop(0, 'rgba(5,8,22,0)'); o.addColorStop(1, 'rgba(5,8,22,.9)'); c.fillStyle = o; c.fillRect(0, 0, W, H);
+    } else {
+      c.fillStyle = 'rgba(255,255,255,.06)'; c.beginPath(); c.arc(W * 0.86, H * 0.16, 150, 0, 7); c.fill(); c.beginPath(); c.arc(W * 0.08, H * 0.98, 190, 0, 7); c.fill();
+    }
+    if (title) {
+      const big = !img; c.fillStyle = '#fff'; c.textBaseline = 'alphabetic'; c.textAlign = 'center'; const fs = big ? 44 : 33; c.font = '800 ' + fs + 'px system-ui,"Segoe UI",Roboto,sans-serif';
+      const mw = 400, ws = title.split(' '), L = []; let cu = '';   /* texto no miolo: o cartão do celular mostra só o meio da imagem */
+      for (const w of ws) { const x = cu ? cu + ' ' + w : w; if (c.measureText(x).width > mw && cu) { L.push(cu); cu = w } else cu = x } if (cu) L.push(cu);
+      let ls = L.slice(0, 4); if (L.length > ls.length) ls[ls.length - 1] = ls[ls.length - 1].replace(/[\s.,;:!?-]+$/, '') + '…';
+      const lh = fs * 1.2, y0 = big ? (H - ls.length * lh) / 2 + fs * 0.85 : H - 30 - (ls.length - 1) * lh;
+      c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = 10; ls.forEach((l, i) => c.fillText(l, W / 2, y0 + i * lh)); c.shadowBlur = 0;
+    }
+    const blob = await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.8)); if (!blob) return null;
+    return { b64: u8b64(new Uint8Array(await blob.arrayBuffer())), at: Date.now(), kind: 'poster' };
+  }
   const api = {
     loadSync: () => PAGES,
     save: p => saveP(p),
@@ -398,12 +484,62 @@ Regras:
     cfgSave: async t => { CFG = String(t); try { await kvSet('cfg', CFG); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     fs: async () => { },
     mops: async ({ id, ops }) => { try { await fPut(id, '/_sl_ops.json', JSON.stringify(ops || [])); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
-    mdel: async id => { try { await fDelAll(id) } catch { } },
+    mdel: async id => { try { await fDelAll(id) } catch { } try { const tx = db.transaction('kv', 'readwrite'); tx.objectStore('kv').delete('th:' + id); await done(tx) } catch { } },
+    /* v63: miniaturas só deste aparelho (ficam fora dos arquivos da página, então não entram na sincronização) */
+    thGet: async id => { try { const r = await kvGet('th:' + id); return r && r.b64 ? r : null } catch { return null } },
+    thMake: async ({ id, name }) => { try { const r = await thPoster(id, name); if (!r) return { ok: false, error: 'sem dados' }; await kvSet('th:' + id, r); return Object.assign({ ok: true }, r) } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
     mhtml: async ({ id }) => { try { const ks = (await fKeys(id)).filter(p => /\.html?$/i.test(p) && !p.startsWith('/_sl')); if (!ks.length) return { ok: false, error: 'Página sem HTML' }; ks.sort((a, b) => (a == '/index.html' ? -1 : b == '/index.html' ? 1 : a.split('/').length - b.split('/').length || a.length - b.length)); return { ok: true, path: ks[0], html: td.decode(await fGet(id, ks[0])) } } catch (e) { return { ok: false, error: String(e.message) } } },
     mwrite: async ({ id, pth, html }) => { try { if (!pth || /\.\./.test(pth) || pth.startsWith('/_sl') || typeof html != 'string') return { ok: false, error: 'caminho inválido' }; const old = await fGet(id, pth); await kvSet('cbk:' + id, { pth, html: td.decode(old) }); await fPut(id, pth, te.encode(html)); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mundo: async ({ id, peek }) => { try { const b = await kvGet('cbk:' + id); if (!b) return { ok: true, has: false }; if (peek) return { ok: true, has: true }; await fPut(id, b.pth, te.encode(b.html)); await kvSet('cbk:' + id, null); return { ok: true, has: false } } catch (e) { return { ok: false, error: String(e.message) } } },
     mdup: async ({ from, to }) => { try { await fCopy(from, to); return { ok: true } } catch (e) { return { ok: false, error: String(e.message) } } },
     mput: async ({ id, name, data }) => { try { const n = Date.now() + '-' + name.replace(/[^\w.-]/g, '_'); await fPut(id, '/uploads/' + n, b64u8(data.split(',')[1])); return { ok: true, path: '/uploads/' + n } } catch (e) { return { ok: false, error: String(e.message) } } },
+    /* v63: imagens para anúncios */
+    mread: async ({ id, u }) => { try { const raw = String(u || ''); if (/^https?:\/\/(?![^/]+\/m\/)/i.test(raw)) return { ok: false, error: 'imagem de fora da página' }; let rel = raw.split('#')[0].split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\/m\/[^/]+/, ''); try { rel = decodeURIComponent(rel) } catch { } if (/\.\.|^\/_sl/.test(rel)) return { ok: false, error: 'caminho inválido' }; const mt = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif' }[((rel.match(/\.(\w+)$/) || [])[1] || '').toLowerCase()]; if (!mt) return { ok: false, error: 'tipo de imagem não suportado' }; const b = await fGet(id, rel); if (!b) return { ok: false, error: 'imagem não encontrada' }; if (b.length > 14e6) return { ok: false, error: 'imagem grande demais' }; return { ok: true, data: 'data:' + mt + ';base64,' + u8b64(b) } } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
+    saveImgs: async ({ files }) => { try { const L = (Array.isArray(files) ? files : []).slice(0, 6).map(f => ({ name: String(f && f.name || 'imagem.jpg').replace(/[^\w.-]/g, '_').slice(0, 90), data: String(f && f.data || '') })).filter(f => /^data:image\/(jpeg|png);base64,/.test(f.data)); if (!L.length) return { ok: false, error: 'sem imagens' }; if (NATIVE()) { const fsP = plug('Filesystem'), sh = plug('Share'), uris = []; for (const f of L) { const w = await fsP.writeFile({ path: 'anuncios/' + f.name, data: f.data.split(',')[1], directory: 'CACHE', recursive: true }); uris.push(w.uri) } try { await sh.share({ title: 'Imagens para anúncios', files: uris, dialogTitle: 'Salvar ou enviar' }) } catch (e) { if (/cancel/i.test(String(e && e.message || e))) return { ok: true, cancel: true }; throw e } return { ok: true, n: L.length } } for (const f of L) { const a = document.createElement('a'); a.href = f.data; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); await new Promise(r => setTimeout(r, 250)) } return { ok: true, n: L.length } } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
+    bkSave: async ({ pages }) => {
+      try {
+        let L; try { L = JSON.parse(String(pages || '[]')) } catch { L = [] }
+        L = (Array.isArray(L) ? L : []).filter(p => p && /^[a-z][a-z0-9]+$/.test(String(p.id)) && !p.trash).map(p => { const q = Object.assign({}, p); delete q.thumb; delete q.broken; return q });
+        if (!L.length) return { ok: false, error: 'Ainda não há páginas para salvar.' };
+        const items = [{ n: 'backup.json', u8: te.encode(JSON.stringify({ app: 'Shark Lab', fmt: 1, at: Date.now(), pages: L })) }];
+        for (const p of L) { if (p.kind) continue; for (const k of await fKeys(p.id)) { if (/^\/_sl_bak\//.test(k) || /^\/_sl_thumb/.test(k)) continue; items.push({ n: 'mirrors/' + p.id + k, id: p.id, p: k }) } }
+        const d = new Date(), nm = 'SharkLab-backup-' + d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0') + '.zip';
+        let buf = [], n = 0, first = true, out;
+        if (NATIVE()) {
+          const fsP = plug('Filesystem'), sh = plug('Share');
+          try { await fsP.rmdir({ path: 'backup', directory: 'CACHE', recursive: true }) } catch { }
+          const flush = async () => { if (!n) return; const all = new Uint8Array(n); let o = 0; for (const b of buf) { all.set(b, o); o += b.length } buf = []; n = 0; const data = u8b64(all); if (first) { first = false; await fsP.writeFile({ path: 'backup/' + nm, data, directory: 'CACHE', recursive: true }) } else await fsP.appendFile({ path: 'backup/' + nm, data, directory: 'CACHE' }) };
+          out = await bkBuild(items, async b => { buf.push(b); n += b.length; if (n >= 786432) await flush() }); await flush();
+          const u = await fsP.getUri({ path: 'backup/' + nm, directory: 'CACHE' });
+          try { await sh.share({ title: 'Backup do Shark Lab', files: [u.uri], dialogTitle: 'Salvar o backup' }) } catch (e) { if (/cancel/i.test(String(e && e.message || e))) return { ok: true, cancel: true }; throw e }
+        } else {
+          out = await bkBuild(items, async b => { buf.push(b.slice()) });
+          const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob(buf, { type: 'application/zip' })); a.download = nm; document.body.appendChild(a); a.click(); a.remove(); buf = [];
+        }
+        return { ok: true, n: L.length, files: out.files, size: out.size, path: nm };
+      } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+    },
+    bkRead: async f => {
+      try {
+        if (!f || !f.slice) throw new Error('Escolha o arquivo de backup de novo.');
+        const ent = await zipIndex(f), j = ent.find(e => e.nm == 'backup.json'); if (!j || j.me !== 0 || j.uz > 64e6) throw new Error('Este arquivo não é um backup do Shark Lab.');
+        const info = JSON.parse(td.decode(await zipData(f, j))); if (!info || info.app !== 'Shark Lab' || !Array.isArray(info.pages)) throw new Error('Este arquivo não é um backup do Shark Lab.');
+        BKF = { f, ent }; return { ok: true, pages: info.pages.filter(p => p && /^[a-z][a-z0-9]+$/.test(String(p.id))), at: info.at || 0 };
+      } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+    },
+    bkRestore: async ({ ids }) => {
+      try {
+        if (!BKF) return { ok: false, error: 'Escolha o arquivo de backup de novo.' };
+        const want = new Set((ids || []).map(String).filter(i => /^[a-z][a-z0-9]+$/.test(i))); let n = 0;
+        for (const e of BKF.ent) {
+          const m = /^mirrors\/([a-z][a-z0-9]+)\/(.+)$/.exec(e.nm); if (!m || !want.has(m[1])) continue;
+          const parts = m[2].split('/'); if (e.me !== 0 || parts.some(x => !x || x == '.' || x == '..' || /[\\:]/.test(x)) || parts[0] == '_sl_bak') continue;
+          const data = await zipData(BKF.f, e); if (crcUp(0, data) !== e.crc) throw new Error('o arquivo de backup está danificado (' + parts[parts.length - 1] + ')');
+          await fPut(m[1], '/' + parts.join('/'), data); n++;
+        }
+        return { ok: true, files: n };
+      } catch (e) { return { ok: false, error: String(e && e.message || e) } }
+    },
     fsize: async ({ id, files }) => { const r = {}; for (const f of files || []) { try { const rel = decodeURIComponent(String(f).split('?')[0].replace(/^https?:\/\/[^/]+/, '').replace(/^\/m\/[^/]+/, '')); const u = await fGet(id, rel); if (u) r[f] = u.length } catch { } } return r },
     mheal: async ({ id, origin, ms }) => { try { return await healMirror(id, origin, { ms }) } catch (e) { return { ok: false, error: String(e && e.message || e) } } },
     imgopt: async ({ id }) => {
