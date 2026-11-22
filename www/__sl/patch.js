@@ -5,8 +5,9 @@ function el(p,r){var e=r||document.body;for(var i=0;e&&i<p.length;i++)e=e.childr
 function tpl(h){var t=document.createElement('template');t.innerHTML=h;return t.content}
 function sig(e){return e.nodeName+'|'+(e.getAttribute('class')||'')}
 function mem(o,e){try{Object.defineProperty(o,'__e',{value:e,enumerable:false,configurable:true,writable:true});if(!o.__s)Object.defineProperty(o,'__s',{value:sig(e),enumerable:false,configurable:true,writable:true})}catch(x){}}
+function fit(e){try{if(!e||!/\S{16,}/.test(e.textContent||''))return;var st=e.style;st.setProperty('overflow-wrap','anywhere');st.setProperty('word-break','break-word');st.setProperty('min-width','0');st.setProperty('max-width','100%');var q=e.parentElement;if(q&&q!==document.body&&q!==document.documentElement)q.style.setProperty('min-width','0')}catch(x){}}window.__SL_FIT=fit;
 function apply(o,e0,root){try{var e=e0||el(o.path||[],root);if(!e)return false;if(!root&&!e0&&(o.op=='text'||o.op=='style'||o.op=='attr'||o.op=='mstyle'))mem(o,e);
-switch(o.op){case'text':e.innerHTML=o.html;if(root)e.__rvt=1;else try{Object.defineProperty(o,'__v',{value:e.innerHTML,enumerable:false,configurable:true,writable:true})}catch(x){}break;
+switch(o.op){case'text':e.innerHTML=o.html;fit(e);if(root)e.__rvt=1;else try{Object.defineProperty(o,'__v',{value:e.innerHTML,enumerable:false,configurable:true,writable:true})}catch(x){}break;
 case'style':for(var k in o.props)e.style.setProperty(k,o.props[k],'important');break;
 case'attr':if(o.v==null)e.removeAttribute(o.k);else{e.setAttribute(o.k,o.v);if(o.k=='src')e.removeAttribute('srcset')}break;
 case'rm':e.remove();break;
