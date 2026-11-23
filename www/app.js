@@ -542,6 +542,9 @@ function wFull(){st({display:/^inline/.test(si.disp)?'flex':si.disp,width:'100%'
 function wCenter(){st({display:/^inline/.test(si.disp)?'block':si.disp,'margin-left':'auto','margin-right':'auto'});if(/^inline/.test(si.disp)&&!/%|px/.test(si.ws||''))st({width:'fit-content'})}
 function pvSet(v){st({'padding-top':v+'px','padding-bottom':v+'px'});si.pt=si.pb=v}
 function phSet(v){st({'padding-left':v+'px','padding-right':v+'px'});si.pl=si.pr=v}
+function mtSet(v){st({'margin-top':v+'px'});si.mt=v}
+function mbSet(v){st({'margin-bottom':v+'px'});si.mb=v}
+function lhSet(v){if(v>=.5&&v<=4){st({'line-height':String(v)});si.lh=v}}
 function mvSet(v){st({'margin-top':v+'px','margin-bottom':v+'px'});si.mt=si.mb=v}
 function fsSet(v){st({'font-size':v+'px'});si.size=v}
 function lsSet(v){st({'letter-spacing':v+'px'});si.ls=v}
@@ -597,7 +600,7 @@ const un=(fn,cur,l)=>`<div class=sgm>${l.map(a=>`<button class="${cur==a[0]?'on'
 const tam=grp('Largura',rw('Largura',un('wUnit',wu,[['auto','Auto'],['px','px'],['%','%']])+(wu=='auto'?`<span class=val>${s.w}px</span>`:''))+(wu=='auto'?'':rg('',wp,wu=='%'?5:20,wu=='%'?100:Math.max(1400,s.w),'wSet',wu)))
 +grp('Altura',rw('Altura',un('hUnit',hu,[['auto','Auto'],['px','px']])+(hu=='auto'?`<span class=val>${s.h}px</span>`:''))+(hu=='auto'?'':rg('',s.h,10,Math.max(900,s.h),'hSet')))
 +grp('Posição e espaços',`<div class=qb><button onclick="wFull()">↔ Largura total</button><button onclick="wCenter()">◎ Centralizar</button></div>`
-+rw('Espaço interno ↕',nu(Math.round((s.pt+s.pb)/2),'pvSet',0,300))+rw('Espaço interno ↔',nu(Math.round((s.pl+s.pr)/2),'phSet',0,300))+rw('Espaço externo ↕',nu(Math.round((s.mt+s.mb)/2),'mvSet',0,400)));
++rw('Espaço interno ↕',nu(Math.round((s.pt+s.pb)/2),'pvSet',0,300))+rw('Espaço interno ↔',nu(Math.round((s.pl+s.pr)/2),'phSet',0,300))+rw('Espaço em cima',nu(s.mt,'mtSet',-300,400))+rw('Espaço embaixo',nu(s.mb,'mbSet',-300,400))+rw('Altura da linha',`<span class=nu><input type=number step=0.05 min=0.5 max=4 value="${s.lh||1.2}" oninput="lhSet(+this.value)"><em>×</em></span>`));
 const ws=s.fw>=800?900:s.fw>=650?700:s.fw>=450?500:400;
 const txt=grp('Cor e fonte',rw('Cor',colH(s.color,'cText'))+rw('Fonte',`<select onchange="ffSet(this.value)"><option value="">${esc(s.ff||'Original')}</option>${FONTS.map(f=>`<option value="${f}" ${ffCur==f?'selected':''}>${f}</option>`).join('')}</select>`)+`<div class=qb style="margin:-4px 0 6px"><button title="Aplicar esta fonte em todos os textos da página" onclick="ffAll()">Usar esta fonte na página toda</button></div>`)+grp('Tamanho e alinhamento',rg('Tamanho',s.size,8,160,'fsSet')+sg('Peso',[[400,'Normal'],[500,'Médio'],[700,'Negrito'],[900,'Super']],ws,'fwSet')+sg('Alinhar',[['left','⇤','Esquerda'],['center','↔','Centro'],['right','⇥','Direita']],s.align,'alSet'))
 +grp('Estilo do texto',rw('Estilo',`<div class=sgm><button class="${s.it?'on':''}" onclick="tgl('it')" title=Itálico><i>I</i></button><button class="${s.ul?'on':''}" onclick="tgl('ul')" title=Sublinhado><u>S</u></button><button class="${s.up?'on':''}" onclick="tgl('up')" title="Tudo em maiúsculas">Aa</button></div>`)+rw('Espaço entre letras',nu(s.ls,'lsSet',0,40)));
