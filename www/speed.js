@@ -121,6 +121,8 @@ function makeSpeed(E){
     let hasAuto=false;for(const p in T){if(isCss(p)&&/\b(img|video)\b[^{}]*\{[^}]*height\s*:\s*auto/i.test(T[p]))hasAuto=true;if(isHtml(p)&&/<style[^>]*>[^<]*\bimg\b[^{}]*\{[^}]*height\s*:\s*auto/i.test(T[p]))hasAuto=true}
     for(const p of Object.keys(T)){
       if(!isHtml(p))continue;let h=T[p];const o0=h;let sb=0;
+      /* v63.35: trocas de imagem feitas no editor (Qualidade / Imagens pesadas) entram direto no HTML: o navegador nao baixa a versao pesada para depois trocar. So vale quando a troca cobre todas as imagens com aquele endereco */
+      const bake={};try{const om=/window\.__SL_OPS=(\[[\s\S]*?\])<\/script>/.exec(h);if(om)for(const q of JSON.parse(om[1])){if(q&&q.op=='attr'&&q.k=='data-sl-o'){if(q.v){if(q.all)bake[q.v]=q.all;else delete bake[q.v]}else if(q.rv)delete bake[q.rv]}}}catch(e){}
       h=h.replace(/(<style\b[^>]*>)([\s\S]*?)(<\/style>)/gi,(m,a,b,c2)=>a+cssProc(b,p,p+'#s'+(sb++))+c2);
       /* trechos que nao podem ser tocados: scripts, noscript, comentarios e picture */
       const frozen=[];const hold=re=>{h=h.replace(re,m=>{frozen.push(m);return '\u0000'+(frozen.length-1)+'\u0001'})};
@@ -129,8 +131,9 @@ function makeSpeed(E){
       let seen=0,first=null;
       h=h.replace(TAG_IMG,(tag,pos)=>{
         const t=parseTag(tag);if(!t)return tag;
-        const src=getA(t,'src');if(src==null)return tag;
+        let src=getA(t,'src');if(src==null)return tag;
         const inPic=pics.some(x=>pos>=x[0]&&pos<x[1]);
+        if(!inPic&&bake[src]){const nb=bake[src];setA(t,'src',nb);t.a=t.a.filter(x=>!/^(srcset|sizes)$/i.test(x[0]));src=nb}
         const a=resolve(p,src),c=a&&conv[a],inf=a&&info[a];
         const isData=/^data:/i.test(src)||/\.svg(\?|#|$)/i.test(src);
         if(c&&!inPic&&!hasA(t,'srcset')){
