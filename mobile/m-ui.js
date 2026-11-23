@@ -91,14 +91,15 @@
     t.classList.add('mtop');
     const kids = Array.from(t.children), btns = kids.filter(k => k.tagName == 'BUTTON');
     const back = btns[0], nm = t.querySelector('#nm'), svs = t.querySelector('#svs'), pb = t.querySelector('#pbtn'), chip = t.querySelector('.fx-chip');
+    const swb = t.querySelector('#swb');
     const un = btns.find(b => /^↶/.test(b.textContent.trim())), re = btns.find(b => /^↷/.test(b.textContent.trim()));
-    const keep = [back, nm, svs, pb, chip, un, re], tools = mk('div', 'tools');
+    const keep = [back, nm, svs, pb, chip, un, re, swb], tools = mk('div', 'tools');
     kids.forEach(k => { if (keep.indexOf(k) < 0) tools.append(k) });   // seletor de aparelho, lápis, original, histórico… ficam guardados (o menu "Mais" usa as mesmas funções)
     if (back) { back.className = 'b2 tb-ic tb-back'; back.innerHTML = IC.back; back.setAttribute('aria-label', 'Voltar'); back.removeAttribute('title') }
     if (un) { un.className = 'b2 tb-ic tb-u'; un.innerHTML = IC.undo; un.setAttribute('aria-label', 'Desfazer'); un.removeAttribute('title') }
     if (re) { re.className = 'b2 tb-ic tb-r'; re.innerHTML = IC.redo; re.setAttribute('aria-label', 'Refazer'); re.removeAttribute('title') }
     const mid = mk('div', 'tb-mid'), st = mk('div', 'tb-st', '<i class="tb-dot"></i><span id="tbtx"></span>');
-    st.id = 'tbst'; if (chip) st.dataset.chip = chip.textContent.trim(); if (svs) st.append(svs);
+    st.id = 'tbst'; if (chip) st.dataset.chip = chip.textContent.trim(); if (svs) st.append(svs); if (swb) st.append(swb);
     mid.append(nm, st);
     const rvt = mk('div', 'rvt', 'Ver minhas modificações');
     t.innerHTML = ''; [back, mid, rvt, un, re, pb, tools].forEach(x => x && t.append(x));
@@ -110,7 +111,7 @@
     let k = 'n', s = 'Rascunho';
     if (A.prev) { s = 'Visualização' }
     else if (A.fctx) { s = st.dataset.chip || 'Etapa do funil'; k = idle ? 'n' : 'y' }
-    else if (c && c.pub) { if (idle) { k = 'g'; s = 'Publicada' } else { k = 'y'; s = 'Alterações pendentes' } }
+    else if (c && c.pub) { if (idle) { k = 'g'; s = 'Publicada' } else { k = 'y'; s = $('#swb') ? 'Pendente' : 'Alterações pendentes' } }
     st.className = 'tb-st ' + k + (st.classList.contains('sav') ? ' sav' : '');
     if (tx.textContent !== s) tx.textContent = s;
     const sv = $('#svs'); st.classList.toggle('sav', !!(sv && /^Salvando/.test(sv.textContent)));
