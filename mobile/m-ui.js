@@ -51,6 +51,7 @@
     multi: P('<rect x="3.5" y="3.5" width="11" height="11" rx="2" stroke-dasharray="3 2.6"/><path d="M11.5 11.5l8.5 3.2-3.8 1.7-1.7 3.8z" fill="currentColor"/>'),
     resize: P('<path d="M14.5 3.5h6v6M9.5 20.5h-6v-6M20.5 3.5L14 10M3.5 20.5L10 14"/>'),
     upload: P('<path d="M12 16V4.5M7 9l5-5 5 5"/><path d="M4.5 19.5h15"/>'),
+    shield: P('<path d="M12 3.5l7 2.6v5.4c0 4.2-2.9 7.3-7 9-4.1-1.7-7-4.8-7-9V6.1z"/><path d="M9.2 12.1l2 2 3.6-3.9"/>'),
     gauge: P('<path d="M4.5 17.5a8 8 0 1 1 15 0"/><path d="M12 17.5l3.6-5.2"/><circle cx="12" cy="17.5" r="1.1"/>'),
     ad: P('<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><circle cx="9" cy="10" r="1.7"/><path d="M20.5 15.5l-4.8-4.8L7 19.5"/>'),
     review: P('<path d="M9 6.5h11M9 12h11M9 17.5h11"/><path d="M3.8 6.6l1.3 1.3 2.2-2.6M3.8 12.1l1.3 1.3 2.2-2.6M3.8 17.6l1.3 1.3 2.2-2.6"/>'),
@@ -282,6 +283,7 @@
       rows.push(['rs', IC.resize, 'Redimensionar itens', 'Arraste as bolinhas do item escolhido', A.rs]);
     }
     if (!pr) rows.push(['imgs', IC.gauge, 'Imagens pesadas', 'Veja o que deixa a página lenta e otimize']);
+    if (!pr) rows.push(['prot', IC.shield, 'Proteção do site', 'Bloqueie baixar imagens, zoom e print']);
     rows.push(['pub', IC.upload, 'Publicação e endereço', 'Domínio, link da página e opções de envio']);
     if (!pr && !fc) rows.push(['ad', IC.ad, 'Imagens para anúncios', 'Prontas para Facebook e Instagram']);
     if (fc && !pr) rows.push(['fn', IC.funnel, 'Etapa do funil', 'Opções desta etapa']);
@@ -294,7 +296,7 @@
       const a = b.dataset.a; o.remove();
       setTimeout(() => {
         if (a == 'rv') call('rvOpen'); else if (a == 'hist') call('histToggle'); else if (a == 'orig') call('origTog'); else if (a == 'sm') call('togSm'); else if (a == 'rs') call('togRs');
-        else if (a == 'imgs') call('imgsOpen'); else if (a == 'ad') call('adOpen'); else if (a == 'pub') { A.tab = 'pub'; call('side'); setS('open') } else if (a == 'fn') { A.tab = 'fn'; call('side'); setS('open') } else if (a == 'exit') call('sair');
+        else if (a == 'imgs') call('imgsOpen'); else if (a == 'prot') call('protOpen'); else if (a == 'ad') call('adOpen'); else if (a == 'pub') { A.tab = 'pub'; call('side'); setS('open') } else if (a == 'fn') { A.tab = 'fn'; call('side'); setS('open') } else if (a == 'exit') call('sair');
       }, 30);
     });
   }
