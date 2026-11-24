@@ -32,9 +32,11 @@ try{if(/"k":"href","v":"#[^"]|scrollIntoView/.test(JSON.stringify(ops))&&!edit){
 
 function runAll(){for(var i=0;i<ops.length;i++)apply(ops[i])}
 function same(o,e){var t=o.op,k;if(t=='text'){var ch=o.__ch;if(ch&&ch.length){var cv=o.__cv,live=0;for(var i=0;i<ch.length;i++){if(ch[i].parentNode===e){live++;if(cv[i]!==null&&ch[i].nodeValue!==cv[i])return false}}return live>0}return e.innerHTML===(o.__v!=null?o.__v:o.html)}if(t=='style'){for(k in o.props)if(e.style.getPropertyValue(k)===''||e.style.getPropertyPriority(k)!='important')return false;return true}if(t=='attr')return o.v==null?!e.hasAttribute(o.k):e.getAttribute(o.k)===o.v;if(t=='mstyle')return e.getAttribute('data-slm')===o.k;return false}
-function again(){var st=false,i,o,t;for(i=0;i<ops.length;i++){t=ops[i].op;if(t=='ins'||t=='rm'||t=='dup'||t=='mv'||t=='mvto'){st=true;break}}
-for(i=0;i<ops.length;i++){o=ops[i];t=o.op;if(t!='text'&&t!='style'&&t!='attr'&&t!='mstyle')continue;
-if(o.__e&&o.__e.isConnected){if(!same(o,o.__e)){var nw=Date.now();if(!o.__r0||nw-o.__r0>15000){pv(o,'__r0',nw);pv(o,'__rc',0)}if(o.__rc<6){pv(o,'__rc',o.__rc+1);apply(o,o.__e)}}}
+function again(){var st=false,i,o,t,dead=[],mp=new Map();for(i=0;i<ops.length;i++){t=ops[i].op;if(t=='ins'||t=='rm'||t=='dup'||t=='mv'||t=='mvto'){st=true;break}}
+/* so a ULTIMA edicao de cada coisa vale: a anterior (ex.: animacao antiga trocada por outra) foi substituida e nao pode brigar com a nova */
+for(i=ops.length-1;i>=0;i--){o=ops[i];t=o.op;if(!o.__e)continue;var kk=t=='text'?'T':t=='attr'?'A:'+o.k:t=='mstyle'?'M:'+o.mq:null;if(!kk)continue;var sk=mp.get(o.__e);if(!sk){sk={};mp.set(o.__e,sk)}if(sk[kk])dead[i]=1;else sk[kk]=1}
+for(i=0;i<ops.length;i++){o=ops[i];t=o.op;if(dead[i]||o.__gv||(t!='text'&&t!='style'&&t!='attr'&&t!='mstyle'))continue;
+if(o.__e&&o.__e.isConnected){if(!same(o,o.__e)){var nw=Date.now();if(!o.__r0||nw-o.__r0>15000){pv(o,'__r0',nw);pv(o,'__rc',0)}if(o.__rc>=5)pv(o,'__gv',1);else{pv(o,'__rc',o.__rc+1);apply(o,o.__e)}}}
 else if(!st){if(o.__e){var c=el(o.path||[]);if(c&&c!==o.__e&&sig(c)===o.__s){mem(o,c);apply(o,c)}}else if(Date.now()-tf<8000)apply(o)}}}
 var gb=false,gmo,tf=0;function guard(){if(gmo||edit||!ops.length)return;gmo=new MutationObserver(function(){if(gb)return;gb=true;try{again()}catch(x){}try{gmo.takeRecords()}catch(x){}gb=false});gmo.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['style','class','src','href','srcset','data-slm']})}
 var hs;if(ops.length){hs=document.createElement('style');hs.textContent='html{visibility:hidden!important}';(document.head||document.documentElement).appendChild(hs)}
