@@ -59,12 +59,12 @@
     const issTxt = r => { try { const a = Array.isArray(r.issues_info) ? r.issues_info : []; const t = []; for (const x of a) { const s = String((x && (x.error_summary || x.error_message)) || '').trim(); if (s && !t.includes(s)) t.push(s) } return t.join(' · ').slice(0, 240) } catch (e) { return '' } };
     async function metaList(tok, acct, ver, level) {
       const id = String(acct).replace(/\D/g, ''), E = level == 's' ? 'adsets' : level == 'a' ? 'ads' : 'campaigns';
-      const mk = wi => new URLSearchParams({ fields: 'id,name,status,effective_status,created_time' + (level == 'c' ? '' : level == 's' ? ',campaign_id' : ',adset_id') + (level == 'a' ? '' : ',daily_budget,lifetime_budget') + (wi ? ',issues_info' : ''), limit: '500', access_token: tok });
+      const mk = wi => new URLSearchParams({ fields: 'id,name,status,effective_status,created_time' + (level == 'c' ? '' : level == 's' ? ',campaign_id' : ',adset_id') + (level == 'a' ? '' : ',daily_budget,lifetime_budget') + (wi ? ',issues_info' + (level == 'a' ? '' : ',start_time') : ''), limit: '500', access_token: tok });
       const run = async wi => {
         let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/' + E + '?' + mk(wi), pages = 0; const out = {};
         while (url && pages++ < 60) {
           const j = await jf(url);
-          for (const r of j.data || []) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0, iss: issTxt(r) };
+          for (const r of j.data || []) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0, iss: issTxt(r), sd: r.start_time ? (Date.parse(r.start_time) || 0) : 0 };
           url = (j.paging && j.paging.next) || null;
         }
         return out;
