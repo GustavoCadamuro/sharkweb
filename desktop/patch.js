@@ -5,9 +5,10 @@ function el(p,r){var e=r||document.body;for(var i=0;e&&i<p.length;i++)e=e.childr
 function tpl(h){var t=document.createElement('template');t.innerHTML=h;return t.content}
 function sig(e){return e.nodeName+'|'+(e.getAttribute('class')||'')}
 function mem(o,e){try{Object.defineProperty(o,'__e',{value:e,enumerable:false,configurable:true,writable:true});if(!o.__s)Object.defineProperty(o,'__s',{value:sig(e),enumerable:false,configurable:true,writable:true})}catch(x){}}
+function pv(o,k,v){try{Object.defineProperty(o,k,{value:v,enumerable:false,configurable:true,writable:true})}catch(x){}}
 function fit(e){try{if(!e||!/\S{16,}/.test(e.textContent||''))return;var st=e.style;st.setProperty('overflow-wrap','anywhere');st.setProperty('word-break','break-word');st.setProperty('min-width','0');st.setProperty('max-width','100%');var q=e.parentElement;if(q&&q!==document.body&&q!==document.documentElement)q.style.setProperty('min-width','0')}catch(x){}}window.__SL_FIT=fit;
 function apply(o,e0,root){try{var e=e0||el(o.path||[],root);if(!e)return false;if(!root&&!e0&&(o.op=='text'||o.op=='style'||o.op=='attr'||o.op=='mstyle'))mem(o,e);
-switch(o.op){case'text':e.innerHTML=o.html;fit(e);if(root)e.__rvt=1;else try{Object.defineProperty(o,'__v',{value:e.innerHTML,enumerable:false,configurable:true,writable:true})}catch(x){}break;
+switch(o.op){case'text':e.innerHTML=o.html;fit(e);if(root)e.__rvt=1;else{try{Object.defineProperty(o,'__v',{value:e.innerHTML,enumerable:false,configurable:true,writable:true})}catch(x){}var nc=[],nv=[];for(var q=e.firstChild;q;q=q.nextSibling){nc.push(q);nv.push(q.nodeType==3?q.nodeValue:null)}pv(o,'__ch',nc);pv(o,'__cv',nv)}break;
 case'style':for(var k in o.props)e.style.setProperty(k,o.props[k],'important');break;
 case'attr':if(o.v==null)e.removeAttribute(o.k);else{e.setAttribute(o.k,o.v);if(o.k=='src')e.removeAttribute('srcset')}break;
 case'rm':e.remove();break;
@@ -30,10 +31,10 @@ function fx(){if(document.getElementById('__slfx'))return;var s=document.createE
 try{if(/"k":"href","v":"#[^"]|scrollIntoView/.test(JSON.stringify(ops))&&!edit){var sm=document.createElement('style');sm.textContent='html{scroll-behavior:smooth}';(document.head||document.documentElement).appendChild(sm)}}catch(x){}window.__SL_fx=fx;try{if(/slfx/.test(JSON.stringify(ops)))fx()}catch(x){}
 
 function runAll(){for(var i=0;i<ops.length;i++)apply(ops[i])}
-function same(o,e){var t=o.op,k;if(t=='text')return e.innerHTML===(o.__v!=null?o.__v:o.html);if(t=='style'){for(k in o.props)if(e.style.getPropertyValue(k)===''||e.style.getPropertyPriority(k)!='important')return false;return true}if(t=='attr')return o.v==null?!e.hasAttribute(o.k):e.getAttribute(o.k)===o.v;if(t=='mstyle')return e.getAttribute('data-slm')===o.k;return false}
+function same(o,e){var t=o.op,k;if(t=='text'){var ch=o.__ch;if(ch&&ch.length){var cv=o.__cv,live=0;for(var i=0;i<ch.length;i++){if(ch[i].parentNode===e){live++;if(cv[i]!==null&&ch[i].nodeValue!==cv[i])return false}}return live>0}return e.innerHTML===(o.__v!=null?o.__v:o.html)}if(t=='style'){for(k in o.props)if(e.style.getPropertyValue(k)===''||e.style.getPropertyPriority(k)!='important')return false;return true}if(t=='attr')return o.v==null?!e.hasAttribute(o.k):e.getAttribute(o.k)===o.v;if(t=='mstyle')return e.getAttribute('data-slm')===o.k;return false}
 function again(){var st=false,i,o,t;for(i=0;i<ops.length;i++){t=ops[i].op;if(t=='ins'||t=='rm'||t=='dup'||t=='mv'||t=='mvto'){st=true;break}}
 for(i=0;i<ops.length;i++){o=ops[i];t=o.op;if(t!='text'&&t!='style'&&t!='attr'&&t!='mstyle')continue;
-if(o.__e&&o.__e.isConnected){if(!same(o,o.__e))apply(o,o.__e)}
+if(o.__e&&o.__e.isConnected){if(!same(o,o.__e)){var nw=Date.now();if(!o.__r0||nw-o.__r0>15000){pv(o,'__r0',nw);pv(o,'__rc',0)}if(o.__rc<6){pv(o,'__rc',o.__rc+1);apply(o,o.__e)}}}
 else if(!st){if(o.__e){var c=el(o.path||[]);if(c&&c!==o.__e&&sig(c)===o.__s){mem(o,c);apply(o,c)}}else if(Date.now()-tf<8000)apply(o)}}}
 var gb=false,gmo,tf=0;function guard(){if(gmo||edit||!ops.length)return;gmo=new MutationObserver(function(){if(gb)return;gb=true;try{again()}catch(x){}try{gmo.takeRecords()}catch(x){}gb=false});gmo.observe(document.documentElement,{childList:true,subtree:true,characterData:true,attributes:true,attributeFilter:['style','class','src','href','srcset','data-slm']})}
 var hs;if(ops.length){hs=document.createElement('style');hs.textContent='html{visibility:hidden!important}';(document.head||document.documentElement).appendChild(hs)}
