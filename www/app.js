@@ -1115,7 +1115,7 @@ try{dCalc(isC)}catch(e){dd.cerr=String(e&&e.message||e);dd.res=null;dd.prev=null
 function dSet(k,v){dd[k]=v;if(k=='per'&&v!='c'||k=='a'||k=='b'){dd.res=null;dd.prev=null;dLoad({force:1})}else dRe()}
 function dDemo(on){dd.demo=on;dd.res=null;dd.prev=null;dd.raw=null;dd.M=null;dd.meta=null;if(!on&&!hasKeys()){dd.busy=0;dd.seq++;dRe();return}dLoad({force:1})}
 function dFilt(k,v){dd[k]=v;dCalc();dRe()}
-function dLvl(x,keep){if(dd.lvl==x)return;dd.lvl=x;if(!keep){cpar='';cparN=''}cn=30;dd.res=null;dd.prev=null;dd.meta=dd.M?(dd.M[x]||null):null;dLoad({force:1,keepMeta:1})}
+function dLvl(x,keep){if(dd.lvl==x)return;dd.lvl=x;if(!keep){cpar='';cparN=''}cn=CN0;dd.res=null;dd.prev=null;dd.meta=dd.M?(dd.M[x]||null):null;dLoad({force:1,keepMeta:1})}
 async function dToggle(id,on,el,isUndo){const m=dd.meta&&dd.meta[id];if(!m)return;const lb=el&&el.closest?el.closest('.tg'):null;if(el)el.disabled=true;if(lb)lb.classList.add('ld');
 const r=dd.demo?{ok:1}:await api.mtSet({mt:cfg.mt,id,status:on?'ACTIVE':'PAUSED'});
 if(!r.ok){toast(fbErr(r.error));dRe();return}
@@ -1175,7 +1175,7 @@ function sideInit(){if(api.mobile)return;document.querySelectorAll('#side .nav')
 function dRe(){view=='camp'?camp():dash()}
 /* ===== v63.53: Campanhas (status real, metricas escolhidas, desfazer) ===== */
 const CST={ACTIVE:['Ativa','on'],PAUSED:['Pausada','off'],CAMPAIGN_PAUSED:['Campanha pausada','off'],ADSET_PAUSED:['Conjunto pausado','off'],DISAPPROVED:['Reprovada','bad'],WITH_ISSUES:['Com problema','bad'],PENDING_REVIEW:['Em análise','wait'],PREAPPROVED:['Em análise','wait'],IN_PROCESS:['Em análise','wait'],PENDING_BILLING_INFO:['Pagamento pendente','bad'],ARCHIVED:['Arquivada','off'],DELETED:['Excluída','off']};
-let cq='',cf='all',cst='on',cn=30,cfo=0,cpar='',cparN='',cSv=null;
+const CN0=innerWidth<=700?80:600;let cq='',cf='all',cst='on',cn=CN0,cfo=0,cpar='',cparN='',cSv=null;
 const cAlert=()=>Math.max(1,+(cfg.alertSpend)||30);
 const CMET=[['budget','Orçamento','Valor por dia. Clique nele para mudar.'],['spend','Gasto','Quanto você gastou'],['sales','Vendas','Vendas aprovadas'],['cpa','CPA','Quanto custa cada venda'],['rev','Faturamento','Total vendido'],['profit','Lucro','Já sem taxas, impostos e gasto'],['roas','ROAS','Faturamento ÷ gasto'],['roi','ROI','Lucro ÷ gasto'],['ticket','Ticket médio','Valor médio de cada venda'],['imps','Impressões','Quantas vezes o anúncio apareceu'],['cpm','CPM','Custo a cada mil impressões'],['reach','Alcance','Pessoas diferentes que viram o anúncio'],['freq','Frequência','Quantas vezes, em média, cada pessoa viu'],['clicks','Cliques no link','Cliques no link do anúncio'],['ctr','CTR (link)','Cliques no link ÷ impressões'],['cpc','CPC (link)','Custo por clique no link'],['lpv','Visualiz. da página','Pessoas que abriram a página depois do clique'],['ic','Finalizações (IC)','Pessoas que iniciaram a compra'],['cic','Custo por IC','Quanto custa cada finalização iniciada'],['vis','Visitas','Pessoas que chegaram na página'],['cr','Conexão','Visitas ÷ cliques'],['vconv','Conv. da página','Vendas ÷ visitas']];
 const CKEY=CMET.map(x=>x[0]),CNAME=Object.fromEntries(CMET.map(x=>[x[0],x[1]])),CDEF=['budget','spend','sales','cpa','profit','roas','rev','cpm','ctr','cpc'];
@@ -1222,7 +1222,7 @@ function cList(){const R=dd.res;if(!R)return'';const all=cRows(),rows=cSorted(cF
 {const T=cTot(rows),r=cNum(T,'roas');cThr=Math.max(2,1.5*(isFinite(r)?r:0))}
 const orp=cst!='all'?all.filter(c=>c.flag=='-'||c.flag=='?'):[],orN=orp.reduce((q,c)=>q+c.sales,0),orV=orp.reduce((q,c)=>q+c.rev,0),orT=orN?`<p class=cor>+ ${orN} venda${orN>1?'s':''} sem campanha identificada (${brl(orV)}) <a onclick="cS('all')">ver em Todas</a></p>`:'';
 if(!rows.length)return orT+`<div class="blk dcn" style="margin-top:12px"><p class=mut style="margin:0 0 ${cst!='all'?10:0}px">${all.length?(cst=='on'&&!cq&&cf=='all'&&!cpar?'Nenhum(a) '+nm+' ativo(a) neste período.':'Nada com esse filtro.'):'Nenhum(a) '+nm+' com dados neste período.'}</p>${cst!='all'&&all.length?'<button class=b2 onclick="cS(\'all\')">Ver todas</button>':''}</div>`;
-const shown=rows.slice(0,cn);return cTbl(shown,rows)+cMob(shown)+orT+(rows.length>cn?`<div style="text-align:center;margin:14px 0"><button class=b2 onclick="cn+=30;cRefresh()">Mostrar mais (${rows.length-cn})</button></div>`:'')}
+const shown=rows.slice(0,cn);return cTbl(shown,rows)+cMob(shown)+orT+(rows.length>cn?`<div style="text-align:center;margin:14px 0"><button class=b2 onclick="cn+=CN0;cRefresh()">Mostrar mais (${rows.length-cn})</button></div>`:'')}
 let csel='';
 function cFunnel(){const R=dd.res;if(!R)return'';const rows=cSorted(cFiltered(cRows())),one=csel&&rows.find(c=>c.k==csel),T=one||cTot(rows);
 const FS=[['clicks','Cliques no link','Cliques'],['lpv','Visualizações da página','Páginas'],['ic','Finalizações de compra','Finalizações'],['sales','Vendas','Vendas']],st=FS.filter(f=>(T[f[0]]||0)>0);
@@ -1232,16 +1232,16 @@ const hint={lpv:'Quem clicou e a página carregou',ic:'Quem começou a comprar',
 return`<div class=fzl><div class=fzh><b>Funil</b><span>${one?esc(one.name):'Total do período'}</span>${one?'<a onclick="cPick()">✕ Ver total</a>':''}${st.length<4&&!(T.lpv>0)?'<small>Sem página/finalização: conecte o Pixel para ver mais etapas</small>':''}</div><div class=fzr>${st.map((f,j)=>{const v=T[f[0]],w=Math.max(3,Math.round(v/top*100)),p=j?st[j-1][0]:'';return(j?`<div class=fza><i>›</i><b>${pc(T[p],v)}</b></div>`:'')+`<div class=fzs title="${hint[f[0]]||'Cliques no link do anúncio'}"><span><span class=fzl1>${f[1]}</span><span class=fzl2>${f[2]}</span></span><b>${nf(v)}</b>${j?`<em>${pc(T[p],v)}</em>`:''}<u><i style="width:${w}%"></i></u></div>`}).join('')}</div></div>`}
 function cPick(e,el){if(!e){csel='';return cFunRe()}if(e.target&&e.target.closest&&e.target.closest('label,a,button,input,select,.dr,.bv,summary'))return;const k=el.dataset.k;csel=csel==k?'':k;cFunRe()}
 function cFunRe(){const f=$('#cfn');if(f)f.innerHTML=cFunnel();document.querySelectorAll('[data-k]').forEach(r=>{if(r.matches('.ct tbody tr,.cmr'))r.classList.toggle('sel',!!csel&&r.dataset.k==csel)})}
-function cRefresh(){const e=$('#ccl');if(!e)return;const w=e.querySelector('.ctw'),sx=w?w.scrollLeft:0,sy=w?w.scrollTop:0;e.innerHTML=cList();const w2=e.querySelector('.ctw');if(w2){w2.scrollLeft=sx;w2.scrollTop=sy}cScrInit();cFit();cFunRe()}
-function cF(k){cf=k;cn=30;camp()}
-function cQ(v){cq=v;cn=30;cRefresh()}
+function cRefresh(){const e=$('#ccl');if(!e)return;const w=e.querySelector('.ctw'),sx=w?w.scrollLeft:0,sy=w?w.scrollTop:0;e.innerHTML=cList();const w2=e.querySelector('.ctw');if(w2){w2.scrollLeft=sx;w2.scrollTop=sy}cScrInit();cFunRe()}
+function cF(k){cf=k;cn=CN0;camp()}
+function cQ(v){cq=v;cn=CN0;cRefresh()}
 function cSort(v){if(v=='budget')return;dd.sort=v;dd.dir=v=='cpa'||v=='name'||v=='cpm'||v=='cpc'?1:-1;camp()}
-function cS(v){cst=v;cn=30;camp()}
-function cBleed(){cf='bleed';cst='on';cn=30;camp()}
+function cS(v){cst=v;cn=CN0;camp()}
+function cBleed(){cf='bleed';cst='on';cn=CN0;camp()}
 function cLim(){const o=document.createElement('div');o.className='ov';o.innerHTML=`<div class=md style="width:min(360px,92vw)"><h3>Alerta de gasto sem venda</h3><p class=mut style="margin:0 0 8px;font-size:13px">Avisa quando uma campanha gastar pelo menos este valor sem nenhuma venda.</p><input id=clv type=number inputmode=decimal min=1 step=1 value="${cAlert()}" style="width:100%"><div class=row><button class=b2 id=clx>Cancelar</button><button class=b id=cly>Salvar</button></div></div>`;document.body.append(o);o.querySelector('#clx').onclick=()=>o.remove();o.querySelector('#cly').onclick=()=>{const v=+o.querySelector('#clv').value;if(!(v>=1))return toast('Digite um valor de pelo menos R$ 1');cfg.alertSpend=v;sc();o.remove();camp()}}
 function cDup(id){const m=dd.meta&&dd.meta[id],lv=dd.lvl,nm=lv=='s'?'conjunto':lv=='a'?'anúncio':'campanha',o=document.createElement('div');o.className='ov';o.innerHTML=`<div class=md style="width:min(380px,92vw)"><h3>Duplicar ${nm}?</h3><p class=mut style="margin:0 0 6px;font-size:13px"><b>${esc((m&&m.name)||id)}</b></p><p class=mut style="margin:0;font-size:13px">A cópia é criada <b>pausada</b>, igual à original. Você liga quando quiser.</p><div class=row><button class=b2 id=cdx>Cancelar</button><button class=b id=cdy>Duplicar</button></div></div>`;document.body.append(o);o.querySelector('#cdx').onclick=()=>o.remove();o.querySelector('#cdy').onclick=async()=>{const bt=o.querySelector('#cdy');bt.disabled=true;bt.textContent='Duplicando…';const r=dd.demo?{ok:1}:await api.mtCopy({mt:cfg.mt,id,level:lv});o.remove();if(!r.ok)return toast(r.error||'Não deu certo');toast('Cópia criada (pausada)');if(!dd.demo)dMetaReload().then(()=>dRe())}}
-function cDrill(id){const m=dd.meta&&dd.meta[id];if(!m||dd.lvl=='a')return;cpar=id;cparN=m.name||'';cn=30;dLvl(dd.lvl=='c'?'s':'a',1)}
-function cDrillX(){cpar='';cparN='';cn=30;camp()}
+function cDrill(id){const m=dd.meta&&dd.meta[id];if(!m||dd.lvl=='a')return;cpar=id;cparN=m.name||'';cn=CN0;dLvl(dd.lvl=='c'?'s':'a',1)}
+function cDrillX(){cpar='';cparN='';cn=CN0;camp()}
 function cWarn(){const er=(dd.raw&&dd.raw.err)||{};return(dd.cerr?`<div class=dw>Não consegui montar os números (${esc(dd.cerr)}). <button class=b2 onclick="dLoad({force:1})">Tentar de novo</button></div>`:'')+(dd.demo?`<div class="dw demo">Mostrando <b>dados de exemplo</b>, não são os seus números. <button class=b2 onclick="dDemo(0)">Sair do exemplo</button></div>`:'')+(er.mt?`<div class=dw>Meta Ads: ${esc(er.mt)}</div>`:'')+(dd.merr&&!dd.demo?`<div class=dw>Não consegui ler o status das campanhas no Facebook. ${esc(fbErr(dd.merr))}</div>`:'')+(er.ck?`<div class=dw>Cakto: ${esc(er.ck)}</div>`:'')+(er.trk?`<div class=dw>Rastreamento: ${esc(er.trk)}</div>`:'')+(!dd.demo&&!(cfg.mt&&cfg.mt.tok)?`<div class=dw>O Facebook não está conectado. <a onclick="go('cfg')">Conectar</a></div>`:'')}
 /* --- mensagens, desfazer e histórico --- */
 function fbErr(m){m=String(m||'');if(/permission|\(#200\)|ads_management/i.test(m))return'O Facebook não deixou alterar. O token precisa da permissão ads_management.';if(/deprecated|\(#2635\)/i.test(m))return'A versão da API do Facebook está antiga. Em Configurações, deixe o campo da versão em branco.';if(/\(#17\)|\(#4\)|\(#32\)|\(#613\)|\(#80004\)|too many calls|rate limit/i.test(m))return'O Facebook pediu uma pausa por excesso de pedidos. Tente de novo em 1 minuto.';if(/\(#190\)|expired|invalid.*token|access token|session/i.test(m))return'O acesso ao Facebook expirou. Gere um novo token em Configurações.';if(/minimum|too low|mínimo|budget/i.test(m))return'O Facebook recusou: o valor está abaixo do mínimo permitido.';if(/fetch failed|ENOTFOUND|ECONN|network|timeout/i.test(m))return'Sem conexão com o Facebook agora. Confira a internet e tente de novo.';return m.length>180?m.slice(0,180)+'…':(m||'Não deu certo')}
@@ -1283,11 +1283,11 @@ let cThr=2;
 function cEye(){cmSave({eye:!cmCfg().eye});camp()}
 const cStar=(c,i)=>{if(!(i.on||!i.mt)||!(c.profit>0)||!(c.sales>=2))return false;const v=cNum(c,'roas');return isFinite(v)&&v>=cThr};
 const cEyc=(c,i,z)=>{if(!cmCfg().eye||z||c.flag=='-'||c.flag=='?')return'';const e=c.profit>0?'g':c.profit<0?'r':'';return e?' ey ey-'+e+(e=='g'&&cStar(c,i)?' ys':''):''};
-function cFit(){const x=$('.ctx'),w=$('.ctw'),p=$('.pad');if(!x||!w||!p||innerWidth<=700)return;p.classList.toggle('cshort',innerHeight<860);const top=x.getBoundingClientRect().top-p.getBoundingClientRect().top+p.scrollTop,non=x.offsetHeight-w.offsetHeight,below=Math.max(0,p.scrollHeight-top-x.offsetHeight);w.style.maxHeight=Math.max(320,Math.floor(p.clientHeight-top-non-below))+'px'}
-window.addEventListener('resize',()=>{if(view=='camp')cFit()});
+function cFit(){}
+
 function cNav(d){const w=$('.ctw');if(w)w.scrollBy({left:d*Math.max(260,w.clientWidth*.6),behavior:'smooth'})}
 function cScrInit(){if(cScrInit.off)cScrInit.off();cScrInit.off=null;const w=$('.ctw'),x=$('.ctx');if(!w||!x)return;const th=x.querySelector('.csth'),tk=x.querySelector('.csk');
-const cz=()=>{const p=$('.pad');if(!p)return;const on=p.classList.contains('cmpt');if(!on&&w.scrollTop>24&&w.scrollHeight-w.clientHeight>130){p.classList.add('cmpt');cFit()}else if(on&&w.scrollTop<=0){p.classList.remove('cmpt');cFit()}};w.addEventListener('scroll',cz,{passive:true});
+
 const upd=()=>{const sw=w.scrollWidth,cw=w.clientWidth,mx=sw-cw;x.classList.toggle('hsc',mx>2);x.classList.toggle('mr',w.scrollLeft<mx-4);x.classList.toggle('ml',w.scrollLeft>4);if(mx>2&&tk&&th){const tw=tk.clientWidth,tl=Math.max(36,Math.round(tw*cw/sw));th.style.width=tl+'px';th.style.transform='translateX('+Math.round(w.scrollLeft/mx*(tw-tl))+'px)'}};
 w.addEventListener('scroll',upd,{passive:true});upd();let sx=0,sl=0,dr=0,dn=0,tx=0,ts=0,td=0;
 w.addEventListener('mousedown',e=>{if(e.button||e.target.closest('a,button,input,select,label,th,.dr,.bv'))return;dn=1;dr=0;sx=e.clientX;sl=w.scrollLeft});
@@ -1303,7 +1303,7 @@ document.body.append(o);o.onclick=e=>{if(e.target==o)o.remove()};o.querySelector
 o.querySelector('#cpy').onclick=()=>{const m=Object.assign({},cfg.cprod||{});let n=0;o.querySelectorAll('select').forEach(s=>{if(s.value){m[s.dataset.k]=s.value;n++}});if(n){cfg.cprod=m;sc()}o.remove();if(n){dCalc();dRe();toast(n+' campanha'+(n>1?'s':'')+' com produto definido')}}}
 /* --- entrar e sair da tela --- */
 function cEnter(){if(!cSv)cSv={per:dd.per,a:dd.a,b:dd.b,plat:dd.plat,acc:dd.acc,sp:dd.sp,prod:dd.prod,lvl:dd.lvl,sort:dd.sort,dir:dd.dir};
-dd.rc=null;dd.xi={};dd.cerr='';dd.per='0';dd.a=dd.b='';dd.plat=dd.acc=dd.sp=dd.prod='';dd.lvl='c';dd.sort='profit';dd.dir=-1;cst='on';cf='all';cq='';cn=30;cfo=0;cpar='';cparN='';
+dd.rc=null;dd.xi={};dd.cerr='';dd.per='0';dd.a=dd.b='';dd.plat=dd.acc=dd.sp=dd.prod='';dd.lvl='c';dd.sort='profit';dd.dir=-1;cst='on';cf='all';cq='';cn=CN0;cfo=0;cpar='';cparN='';
 if(dd.raw&&dd.res&&dd.rr==dKey(1)&&dd.M&&Date.now()-dd.at<60000)dCalc(1);else{dd.res=null;dd.prev=null;dd.busy=0;dd.seq++}}
 function cLeave(){if(!cSv)return;Object.assign(dd,cSv);cSv=null;dd.res=null;dd.prev=null;dd.meta=null;dd.busy=0;dd.seq++}
 function cPrevRange(){const[a,b]=dRange(),n=Math.max(1,Math.round((Date.parse(b+'T12:00:00Z')-Date.parse(a+'T12:00:00Z'))/864e5)+1);return[dadd(a,-n),dadd(a,-1),n]}
@@ -1333,7 +1333,7 @@ ${dd.prod&&Object.keys(R.hid||{}).length?`<div class=cprn><span><b>${Object.keys
 ${dd.lvl!='c'&&!(cfg.mt&&cfg.mt.tok)&&!dd.demo?'<p class=mut style="margin:8px 2px;font-size:13px">Conjuntos e anúncios vêm do Facebook. Conecte o Facebook em Configurações.</p>':''}
 <div id=ccl>${cList()}</div>
 <div class=cft2><span>${pr} · fuso de Brasília</span><span class=lg2><i class=g></i>Dando lucro<i class=w></i>Atenção<i class=r></i>Prejuízo ou sem venda</span><a onclick="cHist()">Histórico de alterações</a></div></div>`}
-function camp(){const m=$('#main');if(!m)return;const keep=camp.on,pd=m.querySelector('.pad'),y=m.scrollTop,py=pd?pd.scrollTop:0,w=m.querySelector('.ctw'),sx=w?w.scrollLeft:0,sy=w?w.scrollTop:0;m.innerHTML=cBuild();camp.on=1;if(keep){m.scrollTop=y;const p2=m.querySelector('.pad');if(p2)p2.scrollTop=py;const w2=m.querySelector('.ctw');if(w2){w2.scrollLeft=sx;w2.scrollTop=sy}}{const p2=m.querySelector('.pad');if(p2&&keep&&pd&&pd.classList.contains('cmpt')&&w&&sy>24)p2.classList.add('cmpt')}cScrInit();cFit();setTimeout(cFit,60);setTimeout(dReach,0)}
+function camp(){const m=$('#main');if(!m)return;const keep=camp.on,pd=m.querySelector('.pad'),y=m.scrollTop,py=pd?pd.scrollTop:0,w=m.querySelector('.ctw'),sx=w?w.scrollLeft:0,sy=w?w.scrollTop:0;m.innerHTML=cBuild();camp.on=1;if(keep){m.scrollTop=y;const p2=m.querySelector('.pad');if(p2)p2.scrollTop=py;const w2=m.querySelector('.ctw');if(w2){w2.scrollLeft=sx;w2.scrollTop=sy}}cScrInit();setTimeout(dReach,0)}
 setInterval(()=>{if(view!='camp'||document.hidden)return;const e=$('.dag');if(e&&dd.at){const g=Math.max(0,Math.round((Date.now()-dd.at)/60000));e.textContent='Atualizado '+(g<1?'agora':'há '+g+' min')}const ae=document.activeElement;if(dd.at&&Date.now()-dd.at>180000&&!dd.busy&&!dd.demo&&!document.querySelector('.ov')&&!(ae&&/INPUT|SELECT|TEXTAREA/.test(ae.tagName)))dLoad({quiet:1})},30000);
 function dTop(R){const rows=R.rows.filter(c=>c.spend>0||c.sales>0).sort((x,y)=>y.profit-x.profit).slice(0,5);if(!rows.length)return'';return`<div class=dbx><div class=dth style="padding:0 0 8px"><h4 style="margin:0">Melhores campanhas</h4><button class=b2 onclick="go('camp')">Ver todas →</button></div>${rows.map(c=>`<div class=dtr><span title="${esc(c.name)}">${c.plat?`<i class="pp ${c.plat}">${PLN[c.plat]||''}</i>`:''}${esc(c.name)}</span><i>${isFinite(c.roas)?xx(c.roas):'—'}</i><b class="${c.profit<0?'neg':'pos'}">${brl(c.profit)}</b></div>`).join('')}</div>`}
 
