@@ -184,7 +184,7 @@ body.kb:not(.kb-fr) .spn[data-s=open],body.kb:not(.kb-fr) .spn[data-s=full]{heig
 .pal-h b{font-size:17px}
 .pal-h button{width:38px;height:38px;border-radius:50%;border:0;background:#1a1d2b;color:#c9cde0;display:grid;place-items:center;padding:0;min-height:0}
 .pal-h button svg{width:18px;height:18px}
-.tg{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.tgp{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
 .tile{min-height:82px;border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:13px}
 .tile:active{background:#222845;border-color:#3b8cff;transform:scale(.97)}
 .pal h4{margin:14px 2px 8px}
@@ -288,7 +288,7 @@ body.kb-fr #donebtn{display:block}
   #sp.spn .ea button{font-size:9px!important;border-radius:12px!important}
   .rv-nav{width:50px}
   .rv-ls{padding:0 12px}
-  .tg{gap:7px}
+  .tgp{gap:7px}
 }
 
 /* ===== v63: prévia em Celular · Tablet · PC (só no modo Visualizar; no editor a página sempre usa o tamanho real do aparelho) ===== */
