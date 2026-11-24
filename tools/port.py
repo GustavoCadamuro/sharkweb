@@ -13,7 +13,7 @@ if '<meta name=viewport' not in head and '<meta name="viewport"' not in head:
     head = head.replace('<meta charset="utf-8">', '<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content"><meta name="theme-color" content="#0b0c11"><link rel="manifest" href="manifest.webmanifest">', 1)
 head = head.replace('</head>', '<link rel="stylesheet" href="m.css"></head>', 1) if '</head>' in head else head
 head = head.replace('mirror://', '/m/')
-body_js = '<script src="lib/jszip.min.js"></script><script src="speed.js"></script><script src="clonefix.js"></script><script src="m-core.js"></script><script src="m-ui.js"></script><script src="boot.js"></script>'
+body_js = '<script src="lib/jszip.min.js"></script><script src="speed.js"></script><script src="clonefix.js"></script><script src="trkx.js"></script><script src="m-core.js"></script><script src="m-ui.js"></script><script src="boot.js"></script>'
 js = js.replace('neste computador','neste aparelho')
 def R(a, b):
     global js
@@ -36,4 +36,5 @@ for f in ['speed.js', 'clonefix.js', 'm-core.js', 'm-ui.js', 'sw.js', 'boot.js',
     if os.path.exists(M + '/' + f): shutil.copy(M + '/' + f, W + '/' + f)
 for f in ['patch.js', 'patch-x.js', 'agent.js', 'diag.js', 'acorn.js', 'h2i.js']: shutil.copy(D + '/' + f, W + '/__sl/' + f)
 shutil.copy(D + '/icon.png', W + '/icon.png')
+shutil.copy(D + '/trkx.js', W + '/trkx.js')
 print('www gerado:', len(out), 'bytes html,', len(js), 'bytes js')

@@ -650,13 +650,22 @@ Regras:
         return { ok: true, text: text.trim(), ops, cut: j.stop_reason == 'max_tokens' };
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
-    dash: async ({ ck, mt, from, to }) => {
+    dash: async ({ ck, mt, tt, tb, gg, trk, from, to }) => {
       const R = { ok: true, orders: null, ads: null, err: {} };
       if (ck && ck.id && ck.sec) { try { R.orders = await ckOrders(ck.id.trim(), ck.sec.trim(), from) } catch (e) { R.err.ck = e.status == 401 || e.status == 400 ? 'A Cakto recusou as credenciais (' + (e.message || e.status) + '). Confira o client_id e o client_secret.' : String(e.message || e) } }
       if (mt && mt.tok && mt.acct) { try { R.ads = []; for (const a of String(mt.acct).split(/[,;\s]+/).filter(Boolean)) R.ads.push(...await mtRows(mt.tok.trim(), a, from, to, (mt.ver || '').trim())) } catch (e) { R.ads = null; R.err.mt = /token|OAuth|session|expired/i.test(e.message || '') ? 'O token da Meta expirou ou é inválido. Gere outro. (' + e.message + ')' : String(e.message || e) } }
+      R.trk = null; if (R.ads) for (const r of R.ads) r.plat = 'fb';
+      const X = SLX(jf), sub = async (k, f) => { try { return await f() } catch (e) { R.err[k] = (e.status == 401 || e.status == 403 || e.status == 400) ? 'Recusado (' + (e.message || e.status) + '). Confira os dados.' : String(e.message || e); return null } }, tasks = [];
+      if (tt && tt.tok && tt.adv) tasks.push(sub('tt', () => X.tiktokRows(tt, from, to)).then(x => { if (x) R.ads = (R.ads || []).concat(x) }));
+      if (tb && tb.id && tb.sec && tb.acct) tasks.push(sub('tb', () => X.taboolaRows(tb, from, to)).then(x => { if (x) R.ads = (R.ads || []).concat(x) }));
+      if (gg && gg.rt && gg.cust && gg.dev) tasks.push(sub('gg', () => X.googleRows(gg, from, to)).then(x => { if (x) R.ads = (R.ads || []).concat(x) }));
+      if (trk && trk.dom && trk.tok) tasks.push(sub('trk', () => X.trkReport(trk, from, to)).then(x => { if (x) { R.trk = x; const have = !!R.orders; R.orders = (R.orders || []).concat(x.orders.filter(o => !(have && o.plat == 'cakto'))) } }));
+      await Promise.all(tasks);
       return R;
     },
-    dtest: async ({ kind, ck, mt }) => {
+    trkSetup: async () => ({ ok: false, error: 'A instalação do rastreamento é feita no computador (Configurações). Depois o painel funciona aqui também.' }),
+    dtest: async ({ kind, ck, mt, tt, tb, gg, trk }) => {
+      if (kind == 'tt' || kind == 'tb' || kind == 'gg' || kind == 'trk') { try { const X = SLX(jf), f = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); if (kind == 'tt') { await X.tiktokRows(tt, f, f); return { ok: true, info: 'Conectado ao TikTok Ads.' } } if (kind == 'tb') { await X.taboolaRows(tb, f, f); return { ok: true, info: 'Conectado ao Taboola.' } } if (kind == 'gg') { await X.googleRows(gg, f, f); return { ok: true, info: 'Conectado ao Google Ads.' } } const r = await X.trkReport(trk, f, f); return { ok: true, info: 'Servidor de rastreamento funcionando. Vendas recebidas: ' + Object.values(r.plat || {}).reduce((x, y) => x + y, 0) } } catch (e) { return { ok: false, error: String(e.message || e) } } }
       try {
         if (kind == 'ck') { const t = await ckToken((ck.id || '').trim(), (ck.sec || '').trim()); const j = await jf(CKU + '/public_api/orders/?limit=1', { headers: { Authorization: 'Bearer ' + t } }); return { ok: true, info: 'Conectado. Total de pedidos: ' + (j.count != null ? j.count : '?') } }
         const id = String(mt.acct || '').split(/[,;\s]+/)[0].replace(/\D/g, ''); const j = await jf(FBU + '/' + ((mt.ver || '').trim() ? (mt.ver.trim() + '/') : '') + 'act_' + id + '?fields=name,currency,account_status&access_token=' + encodeURIComponent((mt.tok || '').trim())); return { ok: true, info: 'Conectado: ' + j.name + ' (' + j.currency + ')', cur: j.currency };
