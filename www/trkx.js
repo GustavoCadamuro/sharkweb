@@ -1,6 +1,7 @@
 /* Shark Lab: gasto de anuncios (TikTok, Taboola, Google) e vendas por webhook. Usado no computador e no celular. */
 (function (g) {
-  function SLX(jf) {
+  function SLX(jf, opt) {
+    const FB = (opt && opt.fb) || 'https://graph.facebook.com';
     const num = v => { const n = +v; return isFinite(n) ? n : 0 };
     const day = s => String(s || '').slice(0, 10);
     async function tiktokRows(tt, from, to) {
@@ -41,7 +42,38 @@
       if (!j || !j.ok) throw new Error('O servidor de rastreamento não respondeu. Instale de novo em Configurações.');
       return j;
     }
-    return { tiktokRows, taboolaRows, googleRows, trkReport };
+    /* Meta: conjuntos e anuncios (gasto), lista de campanhas com status/orcamento, e alteracao */
+    async function metaRows(tok, acct, from, to, ver, level) {
+      const id = String(acct).replace(/\D/g, ''), L = level == 's' ? 'adset' : level == 'a' ? 'ad' : 'campaign';
+      const f = { campaign: 'campaign_id,campaign_name', adset: 'adset_id,adset_name,campaign_id', ad: 'ad_id,ad_name,adset_id,campaign_id' }[L] + ',spend,impressions,clicks,inline_link_clicks,account_currency';
+      const q = new URLSearchParams({ level: L, fields: f, time_range: JSON.stringify({ since: from, until: to }), time_increment: '1', limit: '500', access_token: tok });
+      let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/insights?' + q, pages = 0; const out = [];
+      while (url && pages++ < 100) {
+        const j = await jf(url);
+        for (const r of j.data || []) out.push({ date: r.date_start, cid: r[L + '_id'], name: r[L + '_name'], spend: num(r.spend), imps: num(r.impressions), clicks: num(r.inline_link_clicks || r.clicks), cur: r.account_currency || '', plat: 'fb', acc: id, par: r.campaign_id || '' });
+        url = (j.paging && j.paging.next) || null;
+      }
+      return out;
+    }
+    async function metaList(tok, acct, ver, level) {
+      const id = String(acct).replace(/\D/g, ''), E = level == 's' ? 'adsets' : level == 'a' ? 'ads' : 'campaigns';
+      const q = new URLSearchParams({ fields: 'id,name,status,effective_status' + (level == 'a' ? '' : ',daily_budget,lifetime_budget'), limit: '500', access_token: tok });
+      let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/' + E + '?' + q, pages = 0; const out = {};
+      while (url && pages++ < 60) {
+        const j = await jf(url);
+        for (const r of j.data || []) out[r.id] = { st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 };
+        url = (j.paging && j.paging.next) || null;
+      }
+      return out;
+    }
+    async function metaSet(tok, ver, id, ch) {
+      const b = new URLSearchParams({ access_token: tok });
+      if (ch.status) b.set('status', ch.status);
+      if (ch.daily != null) b.set('daily_budget', String(Math.round(ch.daily * 100)));
+      const j = await jf(FB + '/' + (ver ? ver + '/' : '') + encodeURIComponent(id), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: b.toString() });
+      return !!(j && (j.success || j.id));
+    }
+    return { tiktokRows, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet };
   }
   if (typeof module != 'undefined' && module.exports) module.exports = SLX; else g.SLX = SLX;
 })(typeof window != 'undefined' ? window : globalThis);

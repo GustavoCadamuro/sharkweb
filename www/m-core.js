@@ -344,7 +344,7 @@ Regras:
   }
   async function mtRows(token, acct, from, to, ver) {
     const id = String(acct).replace(/\D/g, ''), q = new URLSearchParams({ level: 'campaign', fields: 'campaign_id,campaign_name,spend,impressions,clicks,inline_link_clicks,account_currency', time_range: JSON.stringify({ since: from, until: to }), time_increment: '1', limit: '500', access_token: token }); let url = FBU + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/insights?' + q, pages = 0; const out = [];
-    while (url && pages++ < 100) { const j = await jf(url); for (const r of j.data || []) out.push({ date: r.date_start, cid: r.campaign_id, name: r.campaign_name, spend: +r.spend || 0, imps: +r.impressions || 0, clicks: +(r.inline_link_clicks || r.clicks) || 0, cur: r.account_currency || '' }); url = (j.paging && j.paging.next) || null } return out;
+    while (url && pages++ < 100) { const j = await jf(url); for (const r of j.data || []) out.push({ date: r.date_start, cid: r.campaign_id, name: r.campaign_name, spend: +r.spend || 0, imps: +r.impressions || 0, clicks: +(r.inline_link_clicks || r.clicks) || 0, cur: r.account_currency || '', acc: id }); url = (j.paging && j.paging.next) || null } return out;
   }
   const doh = async (name, type) => { try { const r = await fetch('https://dns.google/resolve?name=' + encodeURIComponent(name) + '&type=' + type); const j = await r.json(); return (j.Answer || []).filter(a => a.type == (type == 'A' ? 1 : 5)).map(a => a.data) } catch { try { const r = await nfetch('https://dns.google/resolve?name=' + encodeURIComponent(name) + '&type=' + type); const j = await r.json(); return (j.Answer || []).filter(a => a.type == (type == 'A' ? 1 : 5)).map(a => a.data) } catch { return [] } } };
 
@@ -650,10 +650,10 @@ Regras:
         return { ok: true, text: text.trim(), ops, cut: j.stop_reason == 'max_tokens' };
       } catch (e) { return { ok: false, error: String(e.message || e) } }
     },
-    dash: async ({ ck, mt, tt, tb, gg, trk, from, to }) => {
+    dash: async ({ ck, mt, tt, tb, gg, trk, from, to, lvl }) => {
       const R = { ok: true, orders: null, ads: null, err: {} };
       if (ck && ck.id && ck.sec) { try { R.orders = await ckOrders(ck.id.trim(), ck.sec.trim(), from) } catch (e) { R.err.ck = e.status == 401 || e.status == 400 ? 'A Cakto recusou as credenciais (' + (e.message || e.status) + '). Confira o client_id e o client_secret.' : String(e.message || e) } }
-      if (mt && mt.tok && mt.acct) { try { R.ads = []; for (const a of String(mt.acct).split(/[,;\s]+/).filter(Boolean)) R.ads.push(...await mtRows(mt.tok.trim(), a, from, to, (mt.ver || '').trim())) } catch (e) { R.ads = null; R.err.mt = /token|OAuth|session|expired/i.test(e.message || '') ? 'O token da Meta expirou ou é inválido. Gere outro. (' + e.message + ')' : String(e.message || e) } }
+      if (mt && mt.tok && mt.acct) { try { R.ads = []; for (const a of String(mt.acct).split(/[,;\s]+/).filter(Boolean)) R.ads.push(...(lvl == 's' || lvl == 'a' ? await SLX(jf).metaRows(mt.tok.trim(), a, from, to, (mt.ver || '').trim(), lvl) : await mtRows(mt.tok.trim(), a, from, to, (mt.ver || '').trim()))) } catch (e) { R.ads = null; R.err.mt = /token|OAuth|session|expired/i.test(e.message || '') ? 'O token da Meta expirou ou é inválido. Gere outro. (' + e.message + ')' : String(e.message || e) } }
       R.trk = null; if (R.ads) for (const r of R.ads) r.plat = 'fb';
       const X = SLX(jf), sub = async (k, f) => { try { return await f() } catch (e) { R.err[k] = (e.status == 401 || e.status == 403 || e.status == 400) ? 'Recusado (' + (e.message || e.status) + '). Confira os dados.' : String(e.message || e); return null } }, tasks = [];
       if (tt && tt.tok && tt.adv) tasks.push(sub('tt', () => X.tiktokRows(tt, from, to)).then(x => { if (x) R.ads = (R.ads || []).concat(x) }));
@@ -663,6 +663,10 @@ Regras:
       await Promise.all(tasks);
       return R;
     },
+    mtList: async ({ mt, level }) => { try { const out = {}; for (const a of String(mt.acct || '').split(/[,;\s]+/).filter(Boolean)) Object.assign(out, await SLX(jf).metaList(mt.tok.trim(), a, (mt.ver || '').trim(), level)); return { ok: true, map: out } } catch (e) { return { ok: false, error: String(e.message || e) } } },
+    mtSet: async ({ mt, id, status, daily }) => { try { if (status && !/^(ACTIVE|PAUSED)$/.test(status)) return { ok: false, error: 'status inválido' }; await SLX(jf).metaSet(mt.tok.trim(), (mt.ver || '').trim(), id, { status, daily }); return { ok: true } } catch (e) { const m = String(e.message || e); return { ok: false, error: /permission|\(#200\)|ads_management|OAuthException/i.test(m) ? 'A Meta não deixou alterar. O token precisa da permissão ads_management. (' + m + ')' : m } } },
+    heatReset: async () => ({ ok: false, error: 'Zerar é feito no computador.' }),
+    trkReset: async () => ({ ok: false, error: 'Zerar é feito no computador.' }),
     trkSetup: async () => ({ ok: false, error: 'A instalação do rastreamento é feita no computador (Configurações). Depois o painel funciona aqui também.' }),
     dtest: async ({ kind, ck, mt, tt, tb, gg, trk }) => {
       if (kind == 'tt' || kind == 'tb' || kind == 'gg' || kind == 'trk') { try { const X = SLX(jf), f = new Date().toLocaleDateString('sv-SE', { timeZone: 'America/Sao_Paulo' }); if (kind == 'tt') { await X.tiktokRows(tt, f, f); return { ok: true, info: 'Conectado ao TikTok Ads.' } } if (kind == 'tb') { await X.taboolaRows(tb, f, f); return { ok: true, info: 'Conectado ao Taboola.' } } if (kind == 'gg') { await X.googleRows(gg, f, f); return { ok: true, info: 'Conectado ao Google Ads.' } } const r = await X.trkReport(trk, f, f); return { ok: true, info: 'Servidor de rastreamento funcionando. Vendas recebidas: ' + Object.values(r.plat || {}).reduce((x, y) => x + y, 0) } } catch (e) { return { ok: false, error: String(e.message || e) } } }
