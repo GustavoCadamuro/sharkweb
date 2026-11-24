@@ -35,6 +35,7 @@
     prod: P('<path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
     funnel: P('<path d="M3.5 4.5h17l-6.6 7.9V19l-3.8 1.8v-8.4z"/>'),
     dash: P('<path d="M5.5 20v-7M12 20V5M18.5 20v-10"/>'),
+    camp: P('<path d="M4 10v4a1 1 0 0 0 1 1h2l5 4V5L7 9H5a1 1 0 0 0-1 1z"/><path d="M16 9a4 4 0 0 1 0 6"/>'),
     cfg: P('<path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.2"/><circle cx="9" cy="17" r="2.2"/>'),
     plus: P('<path d="M12 5v14M5 12h14"/>'),
     item: P('<path d="M5.5 3.5l13 6.4-5.7 1.9L10.6 17.6z"/><path d="M13 12.5l5 5"/>'),
@@ -65,7 +66,7 @@
   };
 
   /* ---------- navegação de baixo (páginas / funis / painel / config) ---------- */
-  const NAV = { list: ['pages', 'Páginas'], prod: ['prod', 'Produtos'], fnl: ['funnel', 'Funis'], dash: ['dash', 'Painel'], cfg: ['cfg', 'Config.'] };
+  const NAV = { list: ['pages', 'Páginas'], prod: ['prod', 'Produtos'], fnl: ['funnel', 'Funis'], dash: ['dash', 'Painel'], camp: ['camp', 'Campanhas'], cfg: ['cfg', 'Config.'] };
   function nav() {
     $$('#side .nav').forEach(n => {
       if (n.dataset.mi) return; const k = NAV[n.dataset.v]; if (!k) return;

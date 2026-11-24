@@ -57,11 +57,11 @@
     }
     async function metaList(tok, acct, ver, level) {
       const id = String(acct).replace(/\D/g, ''), E = level == 's' ? 'adsets' : level == 'a' ? 'ads' : 'campaigns';
-      const q = new URLSearchParams({ fields: 'id,name,status,effective_status' + (level == 'a' ? '' : ',daily_budget,lifetime_budget'), limit: '500', access_token: tok });
+      const q = new URLSearchParams({ fields: 'id,name,status,effective_status,created_time' + (level == 'c' ? '' : level == 's' ? ',campaign_id' : ',adset_id') + (level == 'a' ? '' : ',daily_budget,lifetime_budget'), limit: '500', access_token: tok });
       let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/' + E + '?' + q, pages = 0; const out = {};
       while (url && pages++ < 60) {
         const j = await jf(url);
-        for (const r of j.data || []) out[r.id] = { st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 };
+        for (const r of j.data || []) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 };
         url = (j.paging && j.paging.next) || null;
       }
       return out;
@@ -73,7 +73,13 @@
       const j = await jf(FB + '/' + (ver ? ver + '/' : '') + encodeURIComponent(id), { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: b.toString() });
       return !!(j && (j.success || j.id));
     }
-    return { tiktokRows, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet };
+    async function metaCopy(tok, ver, id, level) {
+      const b = new URLSearchParams({ access_token: tok, status_option: 'PAUSED' });
+      if (level != 'a') b.set('deep_copy', 'true');
+      const j = await jf(FB + '/' + (ver ? ver + '/' : '') + encodeURIComponent(id) + '/copies', { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body: b.toString() });
+      return (j && (j.copied_campaign_id || j.copied_adset_id || j.copied_ad_id || j.id || (j.success && 'ok'))) || '';
+    }
+    return { tiktokRows, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy };
   }
   if (typeof module != 'undefined' && module.exports) module.exports = SLX; else g.SLX = SLX;
 })(typeof window != 'undefined' ? window : globalThis);

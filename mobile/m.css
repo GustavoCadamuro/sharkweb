@@ -24,7 +24,7 @@ button:active,.nav:active,.card:active .pv{filter:brightness(1.18)}
 #side .logo{display:none}
 #side .nav{flex:1;flex-direction:column;gap:3px;margin:0;padding:4px 2px 2px;font-size:11px;font-weight:500;text-align:center;justify-content:center;border-radius:14px;min-height:52px;color:#8a8ea2;background:transparent;transition:none}
 #side .nav:hover{background:transparent;color:#8a8ea2}
-#side .nav i{display:grid;place-items:center;width:56px;height:30px;border-radius:16px;font-style:normal;transition:background .18s,color .18s}
+#side .nav i{display:grid;place-items:center;width:48px;height:30px;border-radius:16px;font-style:normal;transition:background .18s,color .18s}
 #side .nav i svg{width:22px;height:22px}
 #side .nav.on{background:transparent;color:#fff}
 #side .nav.on i{background:#1b3a74;color:#a9cdff}
