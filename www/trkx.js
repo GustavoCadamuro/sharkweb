@@ -56,16 +56,20 @@
       }
       return out;
     }
+    const issTxt = r => { try { const a = Array.isArray(r.issues_info) ? r.issues_info : []; const t = []; for (const x of a) { const s = String((x && (x.error_summary || x.error_message)) || '').trim(); if (s && !t.includes(s)) t.push(s) } return t.join(' · ').slice(0, 240) } catch (e) { return '' } };
     async function metaList(tok, acct, ver, level) {
       const id = String(acct).replace(/\D/g, ''), E = level == 's' ? 'adsets' : level == 'a' ? 'ads' : 'campaigns';
-      const q = new URLSearchParams({ fields: 'id,name,status,effective_status,created_time' + (level == 'c' ? '' : level == 's' ? ',campaign_id' : ',adset_id') + (level == 'a' ? '' : ',daily_budget,lifetime_budget'), limit: '500', access_token: tok });
-      let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/' + E + '?' + q, pages = 0; const out = {};
-      while (url && pages++ < 60) {
-        const j = await jf(url);
-        for (const r of j.data || []) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 };
-        url = (j.paging && j.paging.next) || null;
-      }
-      return out;
+      const mk = wi => new URLSearchParams({ fields: 'id,name,status,effective_status,created_time' + (level == 'c' ? '' : level == 's' ? ',campaign_id' : ',adset_id') + (level == 'a' ? '' : ',daily_budget,lifetime_budget') + (wi ? ',issues_info' : ''), limit: '500', access_token: tok });
+      const run = async wi => {
+        let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/' + E + '?' + mk(wi), pages = 0; const out = {};
+        while (url && pages++ < 60) {
+          const j = await jf(url);
+          for (const r of j.data || []) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0, iss: issTxt(r) };
+          url = (j.paging && j.paging.next) || null;
+        }
+        return out;
+      };
+      try { return await run(true) } catch (e) { return await run(false) }
     }
     async function metaSet(tok, ver, id, ch) {
       const b = new URLSearchParams({ access_token: tok });
@@ -97,7 +101,8 @@
       const out = {}, list = (ids || []).filter(x => /^\d{5,25}$/.test(String(x))).slice(0, 40);
       const fields = 'id,name,status,effective_status,created_time,campaign_id,adset_id,daily_budget,lifetime_budget';
       let i = 0;
-      const run = async () => { while (i < list.length) { const id = list[i++]; try { const r = await jf(FB + '/' + (ver ? ver + '/' : '') + id + '?' + new URLSearchParams({ fields, access_token: tok })); if (r && r.id) out[r.id] = { ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 }; } catch (e) { } } };
+      const get = async id => { try { return await jf(FB + '/' + (ver ? ver + '/' : '') + id + '?' + new URLSearchParams({ fields: fields + ',issues_info', access_token: tok })) } catch (e) { return await jf(FB + '/' + (ver ? ver + '/' : '') + id + '?' + new URLSearchParams({ fields, access_token: tok })) } };
+      const run = async () => { while (i < list.length) { const id = list[i++]; try { const r = await get(id); if (r && r.id) out[r.id] = { iss: issTxt(r),  ct: r.created_time || '', name: r.name || '', par: r.campaign_id || r.adset_id || '', st: r.status, eff: r.effective_status, db: r.daily_budget ? num(r.daily_budget) / 100 : 0, lb: r.lifetime_budget ? num(r.lifetime_budget) / 100 : 0 }; } catch (e) { } } };
       await Promise.all([run(), run(), run(), run()]);
       return out;
     }
