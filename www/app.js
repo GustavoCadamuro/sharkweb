@@ -574,7 +574,7 @@ if(aiBusy)h+=`<div class="mg a dots"><i></i><i></i><i></i></div>`;m.innerHTML=h;
 async function aiUndo(){const m=(cur.chat||[]).slice(-1)[0];if(!m||!m.n)return;m.n=0;await undo();sv()}
 const aiCall=p=>api.ai(p);
 const askOutline=big=>new Promise(r=>{aiOut=r;tell({cmd:'outline',big:big?1:0});setTimeout(()=>{if(aiOut===r){aiOut=null;r(null)}},big?6000:4000)});
-const applyOps=ops=>new Promise(r=>{aiDone=r;tell({cmd:'ops',ops});setTimeout(()=>{if(aiDone===r){aiDone=null;r({ok:0,fail:ops.length})}},6000)});
+const applyOps=ops=>new Promise(r=>{aiDone=r;tell({cmd:'ops',ops});setTimeout(()=>{if(aiDone===r){aiDone=null;r({ok:0,fail:ops.length})}},6000)}).then(async d=>{/* v63.40: código novo (animação) recarrega o editor limpo: a versão antiga para de rodar e só a nova vale */if(d&&d.ok&&ops.some(o=>o&&o.op=='code')&&cur){try{await api.mops({id:cur.id,ops:cur.ops});loadFr(1)}catch(e){}}return d});
 function aiHist(c,txt){const o=[];for(const m of c.slice(0,-1)){if(m.nk||m.err)continue;const r=m.r=='u'?'user':'assistant';if(o.length&&o[o.length-1].role==r)o[o.length-1].content+='\n'+m.t;else o.push({role:r,content:m.t})}while(o.length&&o[0].role!='user')o.shift();const l=o[o.length-1];if(l&&l.role=='user'){l.content+='\n'+txt;return o}o.push({role:'user',content:txt});return o.slice(-14)}
 async function aiGo(t){const inp=$('#aiin');t=(t||(inp&&inp.value)||'').trim();if(!t||aiBusy)return;if(inp)inp.value='';const c=cur.chat=cur.chat||[];c.push({r:'u',t});
 if(!cfg.ak){c.push({r:'a',t:'Ainda não tenho sua chave da API. Conecte em Configurações e repita o pedido que eu faço a alteração.',nk:1});sv();return aiRender()}
