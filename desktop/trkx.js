@@ -106,7 +106,19 @@
       await Promise.all([run(), run(), run(), run()]);
       return out;
     }
-    return { tiktokRows, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy, metaReach, metaInfo };
+    /* anuncios ativos e o campo "Parametros de URL" (url_tags) de cada um, para conferir a UTM */
+    async function metaUtm(tok, acct, ver) {
+      const id = String(acct).replace(/\D/g, ''), out = {};
+      const q = new URLSearchParams({ fields: 'id,name,campaign_id,creative{url_tags}', effective_status: JSON.stringify(['ACTIVE']), limit: '200', access_token: tok });
+      let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/ads?' + q, pages = 0;
+      while (url && pages++ < 60) {
+        const j = await jf(url);
+        for (const r of j.data || []) out[r.id] = { c: r.campaign_id || '', n: r.name || '', u: (r.creative && r.creative.url_tags) || '' };
+        url = (j.paging && j.paging.next) || null;
+      }
+      return out;
+    }
+    return { tiktokRows, metaUtm, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy, metaReach, metaInfo };
   }
   if (typeof module != 'undefined' && module.exports) module.exports = SLX; else g.SLX = SLX;
 })(typeof window != 'undefined' ? window : globalThis);

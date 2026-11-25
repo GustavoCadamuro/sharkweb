@@ -269,6 +269,7 @@ ipcMain.handle('mtCopy',async(_,{mt,id,level})=>{try{if(!/^\d{5,25}$/.test(Strin
 ipcMain.handle('mtX',async(_,{mt,k,level,from,to,ids})=>{try{const tok=mt.tok.trim(),ver=((mt.ver||'').trim()||'v25.0'),out={};
 if(k=='reach'){if(!/^\d{4}-\d\d-\d\d$/.test(from||'')||!/^\d{4}-\d\d-\d\d$/.test(to||''))return{ok:false,error:'datas'};for(const a of String(mt.acct||'').split(/[,;\s]+/).filter(Boolean))Object.assign(out,await SLX.metaReach(tok,a,from,to,ver,level));return{ok:true,map:out}}
 if(k=='info'){return{ok:true,map:await SLX.metaInfo(tok,ver,ids)}}
+if(k=='utm'){for(const a of String(mt.acct||'').split(/[,;\s]+/).filter(Boolean))Object.assign(out,await SLX.metaUtm(tok,a,ver));return{ok:true,map:out}}
 return{ok:false,error:'?'}}catch(e){return{ok:false,error:String(e.message||e)}}});
 ipcMain.handle('mtSet',async(_,{mt,id,status,daily})=>{try{if(status&&!/^(ACTIVE|PAUSED)$/.test(status))return{ok:false,error:'status inválido'};await SLX.metaSet(mt.tok.trim(),((mt.ver||'').trim()||'v25.0'),id,{status,daily});return{ok:true}}catch(e){const m=String(e.message||e);return{ok:false,error:/permission|\(#200\)|ads_management|OAuthException/i.test(m)?'A Meta não deixou alterar. O token precisa da permissão ads_management. ('+m+')':m}}});
 async function ftpDelete(h,dir,files){const ftp=require('basic-ftp'),c=new ftp.Client(60000);try{await c.access(ftpOpts(h));let n=0;for(const f of files){try{await c.remove(String(dir).replace(/\\/g,'/').replace(/\/+$/,'')+'/'+f);n++}catch{}}return{ok:true,n}}catch(e){return{ok:false,error:ftpErr(e)}}finally{c.close()}}
