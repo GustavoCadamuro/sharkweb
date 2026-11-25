@@ -66,4 +66,20 @@ var seen=0;iv=setInterval(function(){if(done){clearInterval(iv);return}if(!seen&
 function pad(n){return('0'+n).slice(-2)}
 function cd(){var l=document.querySelectorAll('[data-sl-cd]');for(var i=0;i<l.length;i++){var e=l[i],m=+e.getAttribute('data-sl-cd')||15,k='sl_cd_'+m,end=0;try{end=+localStorage.getItem(k)}catch(x){}var now=Date.now();if(!end||end<now){end=now+m*6e4;try{localStorage.setItem(k,end)}catch(x){}}var s=Math.max(0,Math.round((end-now)/1000));e.textContent=(s>=3600?pad(Math.floor(s/3600))+':':'')+pad(Math.floor(s%3600/60))+':'+pad(s%60)}}
 setInterval(cd,1000);
+
+/* v63.71: ancora com deslizamento suave. Qualquer link/botao com #palavra leva ate o lugar marcado com esse nome (sem diferenciar maiusculas/acentos). */
+(function(){if(window.__SL_GO)return;var raf=window.requestAnimationFrame||function(f){return setTimeout(f,16)},run=0;
+function nk(v){try{v=decodeURIComponent(v)}catch(x){}return String(v||'').normalize('NFD').replace(/[̀-ͯ]/g,'').toLowerCase().replace(/^#+/,'').replace(/[^a-z0-9_-]+/g,'-').replace(/^-+|-+$/g,'')}
+function find(h){var raw=String(h||'').replace(/^#+/,'');if(!raw)return null;var e=null;try{e=document.getElementById(decodeURIComponent(raw))}catch(x){}if(!e)e=document.getElementById(raw);if(e)return e;var k=nk(raw),all=document.querySelectorAll('[id]');for(var i=0;i<all.length;i++)if(nk(all[i].id)===k)return all[i];return null}
+function off(){var m=0;try{var a=document.body.querySelectorAll('*'),n=Math.min(a.length,900);for(var i=0;i<n;i++){var c=getComputedStyle(a[i]);if(c.position!=='fixed'&&c.position!=='sticky')continue;var r=a[i].getBoundingClientRect();if(r.top<=8&&r.bottom>0&&r.height<160&&r.width>innerWidth*.5)m=Math.max(m,r.bottom)}}catch(x){}return m}
+function go(h,quiet){var e=typeof h=='string'?find(h):h;if(!e)return false;var y0=window.pageYOffset,y1=Math.max(0,Math.round(e.getBoundingClientRect().top+y0-off()-12)),mx=Math.max(0,Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)-innerHeight);if(y1>mx)y1=mx;var d=y1-y0,id=++run;
+if(!d)return true;var red=false;try{red=matchMedia('(prefers-reduced-motion: reduce)').matches}catch(x){}
+if(red){window.scrollTo(0,y1)}else{var dur=Math.min(1100,Math.max(550,Math.abs(d)*.45)),t0=null;function ease(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2}
+function st(t){if(id!==run)return;if(t0===null)t0=t;var p=Math.min(1,(t-t0)/dur);window.scrollTo(0,y0+d*ease(p));if(p<1)raf(st)}raf(st);
+['wheel','touchstart','keydown'].forEach(function(n){addEventListener(n,function f(){run++;removeEventListener(n,f,true)},{capture:true,passive:true,once:true})})}
+if(!quiet){try{var u=location.pathname+location.search+'#'+(e.id||String(h).replace(/^#/,''));history.replaceState(null,'',u)}catch(x){}}return true}
+window.__SL_GO=go;
+document.addEventListener('click',function(ev){if(window.__SL_EDIT)return;if(ev.defaultPrevented||ev.button||ev.metaKey||ev.ctrlKey||ev.shiftKey)return;var a=ev.target.closest&&ev.target.closest('a[href]');if(!a)return;var h=a.getAttribute('href')||'';if(h.charAt(0)!=='#'||h.length<2)return;if(go(h)){ev.preventDefault()}},false);
+try{if(!window.__SL_EDIT&&location.hash.length>1)addEventListener('load',function(){setTimeout(function(){go(location.hash,1)},60)})}catch(x){}
+})();
 })();
