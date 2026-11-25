@@ -14,8 +14,6 @@ $dir = __DIR__ . '/data';
 if (!is_dir($dir)) { @mkdir($dir, 0755, true); }
 
 function slx_flat($a, $pre = '', &$o = []) { foreach ($a as $k => $v) { $key = $pre === '' ? (string)$k : $pre . '.' . $k; if (is_array($v)) slx_flat($v, $key, $o); else $o[$key] = $v; } return $o; }
-$F = []; slx_flat($j, '', $F);
-$L = []; foreach ($F as $k => $v) { $L[strtolower($k)] = $v; }
 /* primeiro valor nao vazio cujo nome termina com um dos nomes pedidos */
 function slx_pick($L, $names) { foreach ($names as $n) { foreach ($L as $k => $v) { if (($k === $n || substr($k, -strlen($n) - 1) === '.' . $n) && $v !== '' && $v !== null && $v !== false) return $v; } } return null; }
 function slx_num($v) {
@@ -33,16 +31,43 @@ function slx_time($v) {
   if (is_numeric($v)) { $n = (float)$v; if ($n > 1e12) $n /= 1000; return $n > 1e8 ? (int)$n : null; }
   $t = strtotime((string)$v); return $t ? $t : null;
 }
-/* estado: o status manda; se ele nao diz nada, vale o nome do evento */
-$evs = strtolower((string)slx_pick($L, ['webhook_event_type', 'event', 'evento', 'event_type', 'type', 'custom_id']));
-$sts = strtolower((string)slx_pick($L, ['order_status', 'purchase.status', 'sale_status', 'status', 'situacao']));
-$both = $evs . ' ' . $sts;
 function slx_cls($t) {
   if (preg_match('/refus|recus|declin|cancel|expir|failed|falh|negad|denied|reject/', $t)) return 'refused';
   if (preg_match('/waiting|pending|pendente|aguard|pix_g|pix_c|billet|boleto|generated|gerado|delayed|processing|started|iniciad|created/', $t)) return 'waiting_payment';
   if (preg_match('/approved|aprovad|paid|pago|authorized|autorizad|complete|conclu|confirm|success|captured|settled/', $t)) return 'paid';
   return null;
 }
+function slx_utm($L) {
+  $u = [];
+  foreach (['utm_source' => 's', 'utm_medium' => 'm', 'utm_campaign' => 'c', 'utm_content' => 'n', 'utm_term' => 't', 'src' => 'src', 'sck' => 'sck'] as $name => $key) {
+    $x = slx_pick($L, [$name]); $u[$key] = $x === null ? '' : substr((string)$x, 0, 200);
+  }
+  if ($u['c'] === '') { foreach ($L as $k => $v) { if (preg_match('/utm.?campaign/', $k) && $v) { $u['c'] = substr((string)$v, 0, 200); break; } } }
+  return $u;
+}
+function slx_L($j) { $F = []; slx_flat($j, '', $F); $L = []; foreach ($F as $k => $v) { $L[strtolower($k)] = $v; } return $L; }
+/* a Cakto (webhook V2) manda todos os pedidos da compra juntos: principal, order bump, upsell e downsell em data[] */
+$orig = $j; $items = [$j];
+$isList = function ($a) { return is_array($a) && $a && array_keys($a) === range(0, count($a) - 1) && is_array($a[0]); };
+if (isset($j['data']) && $isList($j['data'])) { $items = []; foreach ($j['data'] as $d) { if (is_array($d)) { $x = $j; $x['data'] = $d; $items[] = $x; } } }
+elseif ($isList($j)) { $items = $j; }
+if (!$items) { $items = [$j]; }
+$inh = null;
+if (count($items) > 1) {
+  foreach ($items as $it) {
+    $LL = slx_L($it); $ot0 = strtolower((string)slx_pick($LL, ['offer_type']));
+    if ($ot0 !== '' && $ot0 !== 'main') continue;
+    $uu = slx_utm($LL);
+    if ($uu['c'] !== '' || $uu['s'] !== '' || $uu['sck'] !== '') { $inh = $uu; break; }
+  }
+}
+$ix = 0;
+foreach ($items as $j) {
+$L = slx_L($j);
+/* estado: o status manda; se ele nao diz nada, vale o nome do evento */
+$evs = strtolower((string)slx_pick($L, ['webhook_event_type', 'event', 'evento', 'event_type', 'type', 'custom_id']));
+$sts = strtolower((string)slx_pick($L, ['order_status', 'purchase.status', 'sale_status', 'status', 'situacao']));
+$both = $evs . ' ' . $sts;
 if (preg_match('/cart|abandon|carrinho/', $both)) { $st = 'skip'; }
 elseif (preg_match('/charge.?back|chargedback|contest|disput/', $both)) { $st = 'chargedback'; }
 elseif (preg_match('/refund|reembols|estorn|devolv/', $both)) { $st = 'refunded'; }
@@ -60,6 +85,7 @@ if ($amt === null) {
   elseif ($amt !== null && $cents && is_string($a) && ctype_digit($a)) $amt = $amt / 100;
 }
 if ($fee == 0) { $f = slx_num(slx_pick($L, ['fees', 'fee', 'taxa', 'platform_fee'])); if ($f !== null) $fee = ($cents && is_int(slx_pick($L, ['fees', 'fee', 'taxa', 'platform_fee']))) ? $f / 100 : $f; }
+if ($amt === null || $amt == 0) { $bs = slx_num(slx_pick($L, ['baseamount'])); if ($bs) { $dc = slx_num(slx_pick($L, ['discount'])); $amt = max(0, $bs - ($dc ?: 0)); } }
 $id = (string)slx_pick($L, ['order_id', 'transaction', 'transaction_id', 'sale_id', 'order.hash', 'hash', 'order_ref', 'purchase.transaction', 'data.id', 'id']);
 if ($id === '') { $id = 'x' . substr(sha1($raw), 0, 16); }
 $pm = strtolower((string)slx_pick($L, ['payment_method', 'payment.type', 'payment_type', 'paymentmethod', 'method', 'metodo_pagamento']));
@@ -67,23 +93,22 @@ $pm = preg_match('/pix/', $pm) ? 'pix' : (preg_match('/bolet|billet/', $pm) ? 'b
 $ts = slx_time(slx_pick($L, ['approved_date', 'paid_at', 'paidat', 'approved_at', 'purchase.approved_date', 'confirmed_at', 'data_pagamento']));
 $cr = slx_time(slx_pick($L, ['created_at', 'createdat', 'order_date', 'purchase.order_date', 'date', 'data']));
 $now = time();
-$u = [];
-foreach (['utm_source' => 's', 'utm_medium' => 'm', 'utm_campaign' => 'c', 'utm_content' => 'n', 'utm_term' => 't', 'src' => 'src', 'sck' => 'sck'] as $name => $key) {
-  $x = slx_pick($L, [$name]); $u[$key] = $x === null ? '' : substr((string)$x, 0, 200);
-}
-if ($u['c'] === '') { foreach ($L as $k => $v) { if (preg_match('/utm.?campaign/', $k) && $v) { $u['c'] = substr((string)$v, 0, 200); break; } } }
+$u = slx_utm($L);
+/* pedido extra (order bump/upsell/downsell) sem UTM: herda do pedido principal da mesma entrega */
+if ($inh && $u['c'] === '' && $u['s'] === '' && $u['sck'] === '') { $u = $inh; }
 $email = strtolower(trim((string)slx_pick($L, ['email', 'customer.email', 'buyer.email', 'client.email'])));
 $phone = preg_replace('/\D/', '', (string)slx_pick($L, ['phone', 'phone_number', 'mobile', 'telefone', 'customer.phone', 'customer.mobile', 'buyer.phone', 'checkout_phone']));
 $name = (string)slx_pick($L, ['customer.full_name', 'customer.name', 'buyer.name', 'client.name', 'name', 'nome']);
 $prod = (string)slx_pick($L, ['product.name', 'product_name', 'offer.name', 'produto', 'data.product.name']);
-$row = ['t' => $now, 'p' => $p, 'id' => $id, 'st' => $st, 'ev' => substr($evs, 0, 40), 'amount' => round((float)$amt, 2), 'fees' => round((float)$fee, 2), 'created' => $cr ?: $now, 'paid' => ($st === 'paid') ? ($ts ?: $now) : null, 'pm' => $pm, 'u' => $u, 'prod' => substr($prod, 0, 90), 'em' => $email ? hash('sha256', $email) : '', 'ph' => strlen($phone) >= 10 ? hash('sha256', (strlen($phone) <= 11 ? '55' : '') . $phone) : '', 'nm' => ''];
+$ot = strtolower((string)slx_pick($L, ['offer_type']));
+$po = (string)slx_pick($L, ['parent_order', 'parent_order.refid', 'parent_order.ref_id', 'parent_order.id']);
+$ref = (string)slx_pick($L, ['refid', 'ref_id']);
+$row = ['t' => $now, 'p' => $p, 'id' => $id, 'st' => $st, 'ev' => substr($evs, 0, 40), 'amount' => round((float)$amt, 2), 'fees' => round((float)$fee, 2), 'created' => $cr ?: $now, 'paid' => ($st === 'paid') ? ($ts ?: $now) : null, 'pm' => $pm, 'u' => $u, 'prod' => substr($prod, 0, 90), 'ot' => substr($ot, 0, 20), 'po' => substr($po, 0, 60), 'ref' => substr($ref, 0, 60), 'em' => $email ? hash('sha256', $email) : '', 'ph' => strlen($phone) >= 10 ? hash('sha256', (strlen($phone) <= 11 ? '55' : '') . $phone) : '', 'nm' => ''];
 /* guarda o JSON cru dos ultimos envios para conferir (sem e-mail/telefone completos nao ha como: so os 30 ultimos) */
 $rf = $dir . '/raw.json';
-$R = []; if (is_file($rf)) { $R = json_decode((string)@file_get_contents($rf), true); if (!is_array($R)) $R = []; }
-array_unshift($R, ['t' => $now, 'p' => $p, 'st' => $st, 'id' => $id, 'amount' => $row['amount'], 'raw' => json_decode(substr($raw, 0, 20000), true) ?: substr($raw, 0, 4000)]);
-$R = array_slice($R, 0, 30);
-@file_put_contents($rf, json_encode($R, JSON_UNESCAPED_UNICODE), LOCK_EX);
-if ($st === 'skip') { echo '{"ok":1,"ignorado":1}'; exit; }
+$R = []; if ($ix === 0 && is_file($rf)) { $R = json_decode((string)@file_get_contents($rf), true); if (!is_array($R)) $R = []; }
+if ($ix === 0) { array_unshift($R, ['t' => $now, 'p' => $p, 'st' => $st, 'id' => $id, 'amount' => $row['amount'], 'n' => count($items), 'raw' => json_decode(substr($raw, 0, 20000), true) ?: substr($raw, 0, 4000)]); $R = array_slice($R, 0, 30); @file_put_contents($rf, json_encode($R, JSON_UNESCAPED_UNICODE), LOCK_EX); }
+if ($st === 'skip') { continue; }
 @file_put_contents($dir . '/orders.jsonl', json_encode($row, JSON_UNESCAPED_UNICODE) . PHP_EOL, FILE_APPEND | LOCK_EX);
 
 /* devolve a compra para a Meta (API de Conversoes), uma vez por pedido */
@@ -116,5 +141,7 @@ if ($st === 'paid' && !empty($c['px']) && !empty($c['ct']) && $row['amount'] > 0
       @file_put_contents($sf, json_encode($sent), LOCK_EX);
     }
   }
+}
+$ix++;
 }
 echo '{"ok":1}';

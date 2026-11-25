@@ -118,7 +118,43 @@
       }
       return out;
     }
-    return { tiktokRows, metaUtm, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy, metaReach, metaInfo };
+    /* Vendas da Cakto: principal + order bump + upsell + downsell sao pedidos separados.
+       Une as fontes sem repetir e faz os extras (que muitas vezes chegam sem UTM) valerem para a campanha do pedido principal. */
+    const hasU = o => !!(o.camp || o.src || o.med || o.cont);
+    const tm = o => Date.parse(o.created || o.paid) || 0;
+    function ordersInherit(list) {
+      const byRef = new Map(), byId = new Map(), byEm = new Map();
+      for (const o of list) {
+        if (o.ref) byRef.set(String(o.ref), o);
+        if (o.id != null) byId.set(String(o.id), o);
+        const k = o.em || o.ph; if (k) { if (!byEm.has(k)) byEm.set(k, []); byEm.get(k).push(o) }
+      }
+      const extra = list.filter(o => o.offer && o.offer != 'main' && !hasU(o)).sort((a, b) => tm(a) - tm(b));
+      for (const o of extra) {
+        let p = o.parent ? (byRef.get(String(o.parent)) || byId.get(String(o.parent))) : null;
+        if (p && p !== o && !hasU(p)) p = null;
+        if (!p) {
+          const k = o.em || o.ph, t0 = tm(o); let bt = -1;
+          if (k) for (const q of byEm.get(k) || []) { if (q === o || !hasU(q)) continue; const t = tm(q); if (t <= t0 + 120000 && t0 - t <= 12 * 3600000 && t > bt) { p = q; bt = t } }
+        }
+        if (p && p !== o && hasU(p)) { o.camp = p.camp; o.src = p.src; o.med = p.med; o.cont = p.cont; if (!o.sck) o.sck = p.sck }
+      }
+      return list;
+    }
+    function ordersMerge(api, trk) {
+      const out = Array.isArray(api) ? api.slice() : [], have = Array.isArray(api), ids = new Set(), refs = new Set();
+      for (const o of out) { if (o.id != null) ids.add(String(o.id)); if (o.ref) refs.add(String(o.ref)) }
+      for (const o of trk || []) {
+        if (have && o.plat == 'cakto') {
+          /* a API da Cakto ja lista os pedidos; do rastreamento entram so os extras (bump/upsell/downsell) que ela nao trouxe */
+          const id = String(o.id).replace(/^cakto:/, '');
+          if (ids.has(id) || (o.ref && refs.has(String(o.ref))) || !o.offer || o.offer == 'main') continue;
+        }
+        out.push(o);
+      }
+      return ordersInherit(out);
+    }
+    return { tiktokRows, metaUtm, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy, metaReach, metaInfo, ordersMerge };
   }
   if (typeof module != 'undefined' && module.exports) module.exports = SLX; else g.SLX = SLX;
 })(typeof window != 'undefined' ? window : globalThis);

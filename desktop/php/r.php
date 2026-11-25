@@ -38,7 +38,7 @@ foreach ($O as $o) {
   if (($o['created'] ?? 0) < $from - 6 * 86400 && $t < $from) continue;
   if (($o['created'] ?? 0) > $to) continue;
   $iso = function ($x) { return $x ? (new DateTime('@' . $x))->setTimezone(new DateTimeZone('America/Sao_Paulo'))->format('c') : null; };
-  $out['orders'][] = ['id' => $o['p'] . ':' . $o['id'], 'plat' => $o['p'], 'st' => $o['st'], 'amount' => $o['amount'], 'fees' => $o['fees'], 'created' => $iso($o['created']), 'paid' => $iso($o['paid']), 'refunded' => $o['st'] === 'refunded' ? $iso($o['rf'] ?? $o['t']) : null, 'cb' => $o['st'] === 'chargedback' ? $iso($o['rf'] ?? $o['t']) : null, 'pm' => $o['pm'], 'prod' => $o['prod'], 'camp' => $u['c'] ?? '', 'src' => $u['s'] ?? '', 'med' => $u['m'] ?? '', 'cont' => $u['n'] ?? '', 'sck' => $u['sck'] ?? '', 'em' => $o['em'] ?? '', 'ph' => $o['ph'] ?? ''];
+  $out['orders'][] = ['id' => $o['p'] . ':' . $o['id'], 'plat' => $o['p'], 'st' => $o['st'], 'amount' => $o['amount'], 'fees' => $o['fees'], 'created' => $iso($o['created']), 'paid' => $iso($o['paid']), 'refunded' => $o['st'] === 'refunded' ? $iso($o['rf'] ?? $o['t']) : null, 'cb' => $o['st'] === 'chargedback' ? $iso($o['rf'] ?? $o['t']) : null, 'pm' => $o['pm'], 'prod' => $o['prod'], 'offer' => $o['ot'] ?? '', 'parent' => $o['po'] ?? '', 'ref' => $o['ref'] ?? '', 'camp' => $u['c'] ?? '', 'src' => $u['s'] ?? '', 'med' => $u['m'] ?? '', 'cont' => $u['n'] ?? '', 'sck' => $u['sck'] ?? '', 'em' => $o['em'] ?? '', 'ph' => $o['ph'] ?? ''];
   $out['plat'][$o['p']] = ($out['plat'][$o['p']] ?? 0) + 1;
 }
 foreach ($pv as $key => $vs) { list($d, $c, $s) = explode("\x1f", $key, 3); $out['visits'][] = ['d' => $d, 'camp' => $c, 'src' => $s, 'n' => count($vs), 'ck' => count($ck[$key] ?? [])]; }
