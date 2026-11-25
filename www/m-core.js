@@ -670,7 +670,7 @@ Regras:
       if (gg && gg.rt && gg.cust && gg.dev) tasks.push(sub('gg', () => X.googleRows(gg, from, to)).then(x => { if (x) R.ads = (R.ads || []).concat(x) }));
       if (trk && trk.dom && trk.tok) tasks.push(sub('trk', () => X.trkReport(trk, from, to)).then(x => { if (x) { R.trk = x } }));
       await Promise.all(tasks);
-      if (R.orders || (R.trk && R.trk.orders)) R.orders = X.ordersMerge(R.orders || null, (R.trk && R.trk.orders) || []);
+      if (R.orders || (R.trk && R.trk.orders)) R.orders = X.ordersMerge(R.orders || null, (R.trk && R.trk.orders) || [], R.trk && R.trk.sk);
       return R;
     },
     mtX: async ({ mt, k, level, from, to, ids }) => { try { const tok = mt.tok.trim(), ver = ((mt.ver || '').trim() || 'v25.0'), out = {}; if (k == 'reach') { if (!/^\d{4}-\d\d-\d\d$/.test(from || '') || !/^\d{4}-\d\d-\d\d$/.test(to || '')) return { ok: false, error: 'datas' }; for (const a of String(mt.acct || '').split(/[,;\s]+/).filter(Boolean)) Object.assign(out, await SLX(jf).metaReach(tok, a, from, to, ver, level)); return { ok: true, map: out } } if (k == 'info') return { ok: true, map: await SLX(jf).metaInfo(tok, ver, ids) }; if (k == 'utm') { for (const a of String(mt.acct || '').split(/[,;\s]+/).filter(Boolean)) Object.assign(out, await SLX(jf).metaUtm(tok, a, ver)); return { ok: true, map: out } }; return { ok: false, error: '?' } } catch (e) { return { ok: false, error: String(e.message || e) } } },

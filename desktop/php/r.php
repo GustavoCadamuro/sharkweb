@@ -41,6 +41,9 @@ foreach ($O as $o) {
   $out['orders'][] = ['id' => $o['p'] . ':' . $o['id'], 'plat' => $o['p'], 'st' => $o['st'], 'amount' => $o['amount'], 'fees' => $o['fees'], 'created' => $iso($o['created']), 'paid' => $iso($o['paid']), 'refunded' => $o['st'] === 'refunded' ? $iso($o['rf'] ?? $o['t']) : null, 'cb' => $o['st'] === 'chargedback' ? $iso($o['rf'] ?? $o['t']) : null, 'pm' => $o['pm'], 'prod' => $o['prod'], 'offer' => $o['ot'] ?? '', 'parent' => $o['po'] ?? '', 'ref' => $o['ref'] ?? '', 'camp' => $u['c'] ?? '', 'src' => $u['s'] ?? '', 'med' => $u['m'] ?? '', 'cont' => $u['n'] ?? '', 'sck' => $u['sck'] ?? '', 'em' => $o['em'] ?? '', 'ph' => $o['ph'] ?? ''];
   $out['plat'][$o['p']] = ($out['plat'][$o['p']] ?? 0) + 1;
 }
+$sk = []; $skn = 0;
+foreach ($V as $vv => $r) { $uu = $r['u'] ?? []; if (empty($uu['c']) && empty($uu['s'])) continue; if (($r['t'] ?? 0) < $from - 8 * 86400) continue; $sk[$vv] = [$uu['c'] ?? '', $uu['s'] ?? '', $uu['m'] ?? '', $uu['n'] ?? '']; if (++$skn >= 20000) break; }
+$out['sk'] = $sk;
 foreach ($pv as $key => $vs) { list($d, $c, $s) = explode("\x1f", $key, 3); $out['visits'][] = ['d' => $d, 'camp' => $c, 'src' => $s, 'n' => count($vs), 'ck' => count($ck[$key] ?? [])]; }
 foreach ($ck as $key => $vs) { if (isset($pv[$key])) continue; list($d, $c, $s) = explode("\x1f", $key, 3); $out['visits'][] = ['d' => $d, 'camp' => $c, 'src' => $s, 'n' => 0, 'ck' => count($vs)]; }
 $rf = $dir . '/raw.json'; if (is_file($rf)) { $R = json_decode((string)@file_get_contents($rf), true); if (is_array($R)) $out['raw'] = array_slice($R, 0, 12); }

@@ -141,7 +141,7 @@
       }
       return list;
     }
-    function ordersMerge(api, trk) {
+    function ordersMerge(api, trk, sk) {
       const out = Array.isArray(api) ? api.slice() : [], have = Array.isArray(api), ids = new Set(), refs = new Set();
       for (const o of out) { if (o.id != null) ids.add(String(o.id)); if (o.ref) refs.add(String(o.ref)) }
       for (const o of trk || []) {
@@ -152,6 +152,8 @@
         }
         out.push(o);
       }
+      /* venda sem UTM mas com o codigo do visitante (sck): descobre a campanha pela visita */
+      if (sk) for (const o of out) { if (!hasU(o) && o.sck && sk[o.sck]) { const v = sk[o.sck]; o.camp = v[0]; o.src = v[1]; o.med = v[2]; o.cont = v[3] } }
       return ordersInherit(out);
     }
     return { tiktokRows, metaUtm, taboolaRows, googleRows, trkReport, metaRows, metaList, metaSet, metaCopy, metaReach, metaInfo, ordersMerge };
