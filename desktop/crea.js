@@ -113,24 +113,9 @@ module.exports=function setup(ipcMain,H){
     p.on('error',x=>res({ok:false,err:String(x.message||x)}));p.on('close',c=>res({ok:c===0,err:er,code:c}))})}
   const probe=async f=>{const r=await ff(['-hide_banner','-i',f]);const m=/Duration:\s*(\d+):(\d+):(\d+\.?\d*)/.exec(r.err||'');return{dur:m?+m[1]*3600+ +m[2]*60+ +m[3]:0,video:/Stream #\d+:\d+.*Video:/.test(r.err||'')&&!/Video:\s*(mjpeg|png)/.test(r.err||''),audio:/Stream #\d+:\d+.*Audio:/.test(r.err||'')}};
 
-  const FILL=/^(e+h+|a+h+|h+u+m+|h+m+|ã+h+|ahn|uhm|hã|hum|ér|éé+|eee+|hmm+|ééé*|ãh+|éh+)$/i;
-  const nw=t=>String(t||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]/g,'');
-  /* decide o que fica: tira silencios, muletas e repeticoes (a repeticao que fica e a ultima tentativa) */
-  function plan(words,dur){
-    let w=words.filter(x=>x.t&&x.b>x.a&&!FILL.test(x.t.toLowerCase().replace(/[.,!?…]/g,'')));
-    const stats={fill:words.length-w.length,rep:0};
-    // repeticoes imediatas (de 8 palavras ate 1)
-    let i=0;const keep=[];const rm=new Set();
-    for(i=0;i<w.length;i++){for(let n=Math.min(8,Math.floor((w.length-i)/2));n>=1;n--){let eq=true;for(let k=0;k<n;k++){if(nw(w[i+k].t)!==nw(w[i+n+k].t)||!nw(w[i+k].t)){eq=false;break}}if(eq&&(n>=2||nw(w[i].t).length>=2)&&!/^(muito|sempre|nunca|bem|nao|sim|tchau)$/.test(nw(w[i].t)||'')){for(let k=0;k<n;k++)rm.add(i+k);stats.rep++;i+=n-1;break}}}
-    w=w.filter((_,j)=>!rm.has(j));
-    if(!w.length)return{segs:[],stats};
-    const PRE=.07,POST=.12,GAP=.5;const segs=[];let a=w[0].a,b=w[0].b;
-    for(let j=1;j<w.length;j++){const g=w[j].a-b;if(g>GAP){segs.push([Math.max(0,a-PRE),Math.min(dur||1e9,b+POST)]);a=w[j].a}b=Math.max(b,w[j].b)}
-    segs.push([Math.max(0,a-PRE),Math.min(dur||1e9,b+POST)]);
-    // evita sobreposicao
-    for(let j=1;j<segs.length;j++){if(segs[j][0]<segs[j-1][1]){const m=(segs[j][0]+segs[j-1][1])/2;segs[j-1][1]=m;segs[j][0]=m}}
-    return{segs:segs.filter(s=>s[1]-s[0]>.15),stats}}
-
+  const AC=require('./acut.js');
+  /* le o wav de 16 kHz mono (16 bits) como numeros de -1 a 1 */
+  function readWav(f){const b=fs.readFileSync(f);let p=12,off=-1,len=0;while(p+8<=b.length){const id=b.toString('ascii',p,p+4),sz=b.readUInt32LE(p+4);if(id=='data'){off=p+8;len=Math.min(sz,b.length-off);break}p+=8+sz+(sz&1)}if(off<0)return null;const n=len>>1,x=new Float32Array(n);for(let i=0;i<n;i++)x[i]=b.readInt16LE(off+i*2)/32768;return x}
   const cleanTxt=t=>String(t||'').replace(/\[[^\]]*\]/g,' ').replace(/\s+/g,' ').trim();
   ipcMain.handle('av:cancel',(_,{id})=>{const j=J.get(String(id));if(j){j.canceled=1;for(const p of j.ps)kill(p)}return{ok:true}});
   ipcMain.handle('av:job',async(e,{id,kind,file,norm})=>{
@@ -155,22 +140,22 @@ module.exports=function setup(ipcMain,H){
       if(kind=='srt'){await toWav();ev(15,'Criando as legendas…');const of=path.join(jd,'leg');const r=await H.vz.run(['-f',wav,'-osrt','-of',of,'-ml','42','-sow','-np','-pp','--prompt','Certo. Chat, upsell, downsell, front, hook, copy, criativo, checkout, pixel, Shark Lab, Cakto, Facebook.'],{reg,onPct:p=>ev(15+p*.84,'Criando as legendas…')});rmWav();if(j.canceled)return fail('Parado.');if(!r.ok||!fs.existsSync(of+'.srt'))return fail(r.error||'Não consegui criar as legendas.');
         let s=fs.readFileSync(of+'.srt','utf8');s=H.vz.fixTerms(s);const out=path.join(jd,base.replace(/ editado$/,'')+'.srt');fs.writeFileSync(out,s);try{fs.rmSync(of+'.srt',{force:true})}catch{}J.delete(id);ev(100,'Pronto');return{ok:true,id,name:path.basename(out),out,dur0:pr.dur}}
       if(kind=='clean'){await toWav();ev(16,'Ouvindo a fala…');const of=path.join(jd,'pal');
-        const r=await H.vz.run(['-f',wav,'-oj','-of',of,'-ml','1','-sow','-np','-pp','--prompt','Certo. Chat, upsell, downsell, front, hook, copy, criativo, checkout, pixel, Shark Lab, Cakto, Facebook.'],{reg,onPct:p=>ev(16+p*.5,'Ouvindo a fala…')});rmWav();if(j.canceled)return fail('Parado.');
+        const r=await H.vz.run(['-f',wav,'-oj','-of',of,'-ml','1','-sow','-np','-pp','--prompt','Certo. Chat, upsell, downsell, front, hook, copy, criativo, checkout, pixel, Shark Lab, Cakto, Facebook.'],{reg,onPct:p=>ev(16+p*.5,'Ouvindo a fala…')});if(j.canceled){rmWav();return fail('Parado.')}
         let words=[];try{const jj=JSON.parse(fs.readFileSync(of+'.json','utf8'));words=(jj.transcription||[]).map(x=>({t:String(x.text||'').trim(),a:(x.offsets&&x.offsets.from||0)/1000,b:(x.offsets&&x.offsets.to||0)/1000})).filter(x=>x.t&&!/^\[.*\]$/.test(x.t))}catch{}
         try{fs.rmSync(of+'.json',{force:true})}catch{}
-        if(!r.ok&&!words.length)return fail(r.error||'Não consegui ouvir a fala.');if(!words.length)return fail('Não ouvi fala neste arquivo.');
-        const P=plan(words,pr.dur);if(!P.segs.length)return fail('Não sobrou fala depois da limpeza.');
-        const segs=P.segs,N=segs.length,f=n=>n.toFixed(3);let fc='';
-        const fade=.012;
-        for(let k=0;k<N;k++){const[a,b]=segs[k],d=b-a;fc+=`[0:a]atrim=start=${f(a)}:end=${f(b)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fade},afade=t=out:st=${f(Math.max(0,d-fade))}:d=${fade}[a${k}];`;if(pr.video)fc+=`[0:v]trim=start=${f(a)}:end=${f(b)},setpts=PTS-STARTPTS[v${k}];`}
+        ev(68,'Medindo cada pausa…');const sam=readWav(wav);rmWav();
+        if(!sam||sam.length<1600)return fail('Não consegui ler o áudio.');
+        const an=AC.analyze(sam,16000),P=AC.plan(an,words);if(!P.keep.length)return fail(P.warn&&P.warn[0]||'Não sobrou fala depois da limpeza.');
+        const segs=P.keep,N=segs.length,f=n=>n.toFixed(3);let fc='';
+        for(let k=0;k<N;k++){const[a,b]=segs[k],d=b-a,fi=k==0?.005:.012,fo=k==N-1?.03:.012;fc+=`[0:a]atrim=start=${f(a)}:end=${f(b)},asetpts=PTS-STARTPTS,afade=t=in:st=0:d=${fi},afade=t=out:st=${f(Math.max(0,d-fo))}:d=${fo}[a${k}];`;if(pr.video)fc+=`[0:v]trim=start=${f(a)}:end=${f(b)},setpts=PTS-STARTPTS[v${k}];`}
         fc+=pr.video?segs.map((_,k)=>`[v${k}][a${k}]`).join('')+`concat=n=${N}:v=1:a=1[vo][ao0];`:segs.map((_,k)=>`[a${k}]`).join('')+`concat=n=${N}:v=0:a=1[ao0];`;
         fc+=norm?`[ao0]loudnorm=I=-14:TP=-1.5:LRA=11[ao]`:`[ao0]anull[ao]`;
-        const sf=path.join(jd,'f.txt');fs.writeFileSync(sf,fc);const ext=pr.video?'.mp4':'.mp3';const out=path.join(jd,base+ext);
-        const a=['-y','-i',file,'-filter_complex_script',sf].concat(pr.video?['-map','[vo]','-map','[ao]','-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart']:['-map','[ao]','-c:a','libmp3lame','-q:a','2'],[out]);
-        const tot=segs.reduce((s,x)=>s+x[1]-x[0],0);ev(68,'Cortando e montando…');
+        const sf=path.join(jd,'f.txt');fs.writeFileSync(sf,fc);const iext=path.extname(file).toLowerCase(),AEXT=iext=='.wav'?'.wav':(iext=='.m4a'||iext=='.aac')?'.m4a':'.mp3',ext=pr.video?'.mp4':AEXT;const out=path.join(jd,base+ext);
+        const a=['-y','-i',file,'-filter_complex_script',sf].concat(pr.video?['-map','[vo]','-map','[ao]','-c:v','libx264','-preset','veryfast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-b:a','192k','-movflags','+faststart']:['-map','[ao]'].concat(ext=='.wav'?['-c:a','pcm_s16le']:ext=='.m4a'?['-c:a','aac','-b:a','192k']:['-c:a','libmp3lame','-b:a','192k']),[out]);
+        const tot=segs.reduce((s,x)=>s+x[1]-x[0],0);ev(72,'Cortando e montando…');
         const r2=await ff(a,{reg,onTime:t=>ev(68+Math.min(1,t/(tot||1))*31,'Cortando e montando…')});try{fs.rmSync(sf,{force:true})}catch{}
         if(j.canceled)return fail('Parado.');if(!r2.ok)return fail('Não consegui montar o arquivo editado.');
-        J.delete(id);ev(100,'Pronto');return{ok:true,id,name:path.basename(out),out,dur0:pr.dur,dur1:tot,cuts:N-1,fill:P.stats.fill,rep:P.stats.rep}}
+        J.delete(id);ev(100,'Pronto');return{ok:true,id,name:path.basename(out),out,dur0:pr.dur,dur1:tot,cuts:P.stats.cuts,fill:P.stats.fill,rep:P.stats.rep,noise:P.stats.noise,tails:P.stats.tails,warn:P.warn||[]}}
       return fail('Ação inválida.');
     }catch(x){try{J.delete(id)}catch{}return{ok:false,error:String(x&&x.message||x),canceled:j.canceled}}});
 
@@ -181,5 +166,5 @@ module.exports=function setup(ipcMain,H){
   ipcMain.handle('av:saveText',async(_,{text,name})=>{try{const r=await H.dialog.showSaveDialog(H.win(),{title:'Salvar',defaultPath:String(name||'texto.txt').replace(/[\\/:*?"<>|]/g,' ')});if(r.canceled||!r.filePath)return{ok:false,canceled:1};fs.writeFileSync(r.filePath,String(text||''),'utf8');return{ok:true}}catch(e){return{ok:false,error:String(e.message||e)}}});
   // limpa saidas antigas (mais de 3 dias)
   setTimeout(()=>{try{const d=OUT();for(const n of fs.readdirSync(d)){const p=path.join(d,n);if(Date.now()-fs.statSync(p).mtimeMs>3*864e5)fs.rmSync(p,{recursive:true,force:true})}}catch{}},8000);
-  return{outName,plan};
+  return{outName,plan:AC.plan};
 };

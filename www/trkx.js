@@ -46,12 +46,12 @@
     const act = (a, names) => { if (!Array.isArray(a)) return 0; for (const n of names) for (const x of a) if (x && x.action_type === n) return num(x.value); return 0; };
     async function metaRows(tok, acct, from, to, ver, level) {
       const id = String(acct).replace(/\D/g, ''), L = level == 's' ? 'adset' : level == 'a' ? 'ad' : 'campaign';
-      const f = { campaign: 'campaign_id,campaign_name', adset: 'adset_id,adset_name,campaign_id', ad: 'ad_id,ad_name,adset_id,campaign_id' }[L] + ',spend,impressions,clicks,inline_link_clicks,actions,account_currency';
+      const f = { campaign: 'campaign_id,campaign_name', adset: 'adset_id,adset_name,campaign_id', ad: 'ad_id,ad_name,adset_id,campaign_id' }[L] + ',spend,impressions,clicks,inline_link_clicks,actions,action_values,account_currency';
       const q = new URLSearchParams({ level: L, fields: f, time_range: JSON.stringify({ since: from, until: to }), time_increment: '1', limit: '500', access_token: tok });
       let url = FB + '/' + (ver ? ver + '/' : '') + 'act_' + id + '/insights?' + q, pages = 0; const out = [];
       while (url && pages++ < 100) {
         const j = await jf(url);
-        for (const r of j.data || []) out.push({ date: r.date_start, cid: r[L + '_id'], name: r[L + '_name'], spend: num(r.spend), imps: num(r.impressions), clicks: num(r.inline_link_clicks || r.clicks), ic: act(r.actions, ['omni_initiated_checkout', 'initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']), lpv: act(r.actions, ['landing_page_view', 'omni_landing_page_view']), cur: r.account_currency || '', plat: 'fb', acc: id, par: r.campaign_id || '' });
+        for (const r of j.data || []) out.push({ date: r.date_start, cid: r[L + '_id'], name: r[L + '_name'], spend: num(r.spend), imps: num(r.impressions), clicks: num(r.inline_link_clicks || r.clicks), pur: act(r.actions, ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']), pv: act(r.action_values, ['omni_purchase', 'purchase', 'offsite_conversion.fb_pixel_purchase']), ic: act(r.actions, ['omni_initiated_checkout', 'initiate_checkout', 'offsite_conversion.fb_pixel_initiate_checkout']), lpv: act(r.actions, ['landing_page_view', 'omni_landing_page_view']), cur: r.account_currency || '', plat: 'fb', acc: id, par: r.campaign_id || '' });
         url = (j.paging && j.paging.next) || null;
       }
       return out;
