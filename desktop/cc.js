@@ -8,7 +8,7 @@ const SYS=`Você edita a página de vendas do usuário dentro do app Shark Lab. 
 Regras:
 - Responda em português do Brasil, bem curto (1 a 3 frases), dizendo o que mudou, sem jargão.
 - Leia o arquivo antes de editar: ele pode ter mudado desde a última mensagem. Faça só o que foi pedido, com a menor edição possível, e preserve o resto exatamente como está (scripts, pixels, links de checkout, ids, classes).
-- Se vier um bloco <selecionado>, o pedido é sobre esse elemento.
+- Se vier uma lista de imagens anexadas, olhe cada uma com Read e use só como referência visual (nunca copie para a página). Se vier um bloco <selecionado>, o pedido é sobre esse elemento.
 - Não apague nem renomeie arquivos, não crie arquivos sem necessidade e não mexa em arquivos que começam com _sl.
 - Mantenha a página responsiva (celular primeiro). Use valores de CSS concretos (cores hex, px/rem).
 - Se faltar informação para fazer certo, pergunte em vez de adivinhar. Nunca invente links, preços, depoimentos ou imagens: use só o que já existe na pasta ou o que o usuário indicar.
@@ -16,6 +16,11 @@ Regras:
 - Memória: se o usuário disser uma preferência que deve valer sempre daqui para frente (ex.: "sempre", "nunca", "de agora em diante", "lembre que", "eu prefiro"), termine a resposta com uma última linha exatamente assim: MEMORIA: <regra curta em português>. Só faça isso quando ele disser claramente; nunca para pedidos pontuais e nunca invente preferências.`;
 
 const uuid=()=>crypto.randomUUID();
+/* tira do HTML as pecinhas do editor (alca de arrastar etc.) que nunca devem ir para a pagina */
+function cleanJunk(h){if(typeof h!='string'||h.indexOf('id="__mv')<0&&h.indexOf("id='__mv")<0)return h;
+  const re=/<div\b[^>]*\bid=["']__mv[hgl]["'][^>]*>/gi;let m,out='',last=0;
+  while((m=re.exec(h))){out+=h.slice(last,m.index);let d=1,i=m.index+m[0].length;const t=/<(\/?)div\b[^>]*>/gi;t.lastIndex=i;let x;while(d>0&&(x=t.exec(h))){d+=x[1]?-1:1;i=t.lastIndex}last=i;re.lastIndex=i}
+  return out+h.slice(last)}
 const EFF={low:1,medium:1,high:1,xhigh:1,max:1};
 const memLoad=f=>{try{const a=JSON.parse(fs.readFileSync(f,'utf8'));return Array.isArray(a)?a.filter(x=>typeof x=='string'&&x.trim()).slice(0,40):[]}catch{return[]}};
 const cleanEnv=()=>{const e=Object.assign({},process.env);for(const k of['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY','ELECTRON_RUN_AS_NODE'])delete e[k];e.NO_COLOR='1';return e};
@@ -68,21 +73,24 @@ module.exports=function setup(ipcMain,H){
   ipcMain.handle('cc:cancel',(_,{id})=>{const r=RUN.get(id);if(!r)return{ok:true};r.canceled=1;kill(r.p);return{ok:true}});
   function kill(p){if(!p)return;try{if(process.platform=='win32')spawn('taskkill',['/pid',String(p.pid),'/T','/F'],{windowsHide:true});else p.kill('SIGTERM')}catch{}}
 
-  ipcMain.handle('cc:run',async(e,{id,prompt,sid,html,ops,keep,sel,rid,effort})=>{
+  ipcMain.handle('cc:run',async(e,{id,prompt,sid,html,ops,keep,sel,rid,effort,imgs})=>{
     if(!okId(id))return{ok:false,error:'página inválida'};if(RUN.has(id))return{ok:false,error:'Já estou trabalhando nesta página. Espere terminar.'};
     const dir=path.join(H.MD(),id);if(!fs.existsSync(dir))return{ok:false,error:'Página não encontrada.'};
     const b=await findBin();if(!b)return{ok:false,needInstall:1};
     const wc=e.sender,stamp=Date.now()+'-'+Math.random().toString(36).slice(2,6),bkDir=path.join(BK(),id,stamp);
     const main=H.mainHtml(dir);if(!main)return{ok:false,error:'Esta página não tem HTML.'};
+    try{const cur0=fs.readFileSync(dir+main,'utf8'),cl=cleanJunk(cur0);if(cl!==cur0)fs.writeFileSync(dir+main,cl)}catch{}
     let files,FLAT=false;try{files=snapshot(dir,bkDir);const flat=typeof html=='string'&&html.length>200&&Array.isArray(ops)&&ops.length>0&&Array.isArray(keep)&&keep.length<ops.length;fs.writeFileSync(path.join(bkDir,'list.json'),JSON.stringify(Object.keys(files)));fs.writeFileSync(path.join(bkDir,'meta.json'),JSON.stringify({ops:flat?ops:null,time:Date.now(),prompt:String(prompt||'').slice(0,200)}));FLAT=flat}catch(er){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}return{ok:false,error:'Não consegui guardar a cópia de segurança: '+String(er.message||er)}}
     const opsF=path.join(dir,'_sl_ops.json');
     /* edições visuais pendentes: a página como está na tela (com elas aplicadas) vira o arquivo principal e a lista zera */
-    if(FLAT){try{fs.writeFileSync(dir+main,html);fs.writeFileSync(opsF,JSON.stringify(keep));const m=main.replace(/^\//,'');if(files[m]&&files[m].t)files[m].h=hashOf(fs.readFileSync(dir+main))}catch(er){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}return{ok:false,error:String(er.message||er)}}}
+    if(FLAT){try{fs.writeFileSync(dir+main,cleanJunk(html));fs.writeFileSync(opsF,JSON.stringify(keep));const m=main.replace(/^\//,'');if(files[m]&&files[m].t)files[m].h=hashOf(fs.readFileSync(dir+main))}catch(er){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}return{ok:false,error:String(er.message||er)}}}
     const memF=path.join(H.userData(),'cc-memoria.json'),mem=memLoad(memF);const sysF=path.join(H.userData(),'cc-sys.txt');try{fs.writeFileSync(sysF,SYS+(mem.length?'\n\nPreferências já combinadas com o usuário (siga sempre):\n'+mem.map(x=>'- '+x).join('\n'):''))}catch{}
-    const msg=`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
+    const imgDir=path.join(H.userData(),'ccimg',id+'-'+stamp),imgP=[];
+    try{if(Array.isArray(imgs)&&imgs.length){fs.mkdirSync(imgDir,{recursive:true});imgs.slice(0,4).forEach((x,i)=>{const m=/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(String(x&&x.data||''));if(!m)return;const f=path.join(imgDir,'imagem'+(i+1)+'.'+(m[1].toLowerCase()=='jpeg'?'jpg':m[1].toLowerCase()));fs.writeFileSync(f,Buffer.from(m[2],'base64'));imgP.push(f)})}}catch{}
+    const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
     let sessionId=sid&&/^[0-9a-f-]{36}$/i.test(sid)?sid:uuid(),resume=!!(sid&&/^[0-9a-f-]{36}$/i.test(sid));
     const once=(useResume)=>new Promise(res=>{
-      const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
+      const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(imgP.length?['--add-dir',imgDir]:[]).concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
       let p;try{p=spawn(b.bin,args,{cwd:dir,env:cleanEnv(),windowsHide:true,shell:needShell(b.bin),stdio:['pipe','pipe','pipe']})}catch(er){return res({err:String(er.message||er)})}
       const st={p,canceled:0};RUN.set(id,st);let buf='',err='',final=null,text='',lim=null;const tm=setTimeout(()=>{st.timeout=1;kill(p)},12*60*1000);
       const line=l=>{if(!l.trim())return;let o;try{o=JSON.parse(l)}catch{return}
@@ -96,8 +104,10 @@ module.exports=function setup(ipcMain,H){
       p.on('error',er=>{clearTimeout(tm);RUN.delete(id);res({err:String(er.code=='ENOENT'?'não encontrei o claude':er.message),needInstall:er.code=='ENOENT'})});
       p.on('close',code=>{clearTimeout(tm);if(buf.trim())line(buf);RUN.delete(id);res({code,final,err,text,lim,canceled:st.canceled,timeout:st.timeout})});
       try{p.stdin.on('error',()=>{});p.stdin.end(msg)}catch{}});
+    const rmImg=()=>{try{fs.rmSync(imgDir,{recursive:true,force:true})}catch{}};
     let r=await once(resume);
     if(resume&&r&&!r.canceled&&r.final&&r.final.is_error&&/no conversation found|session/i.test(String(r.final.result||r.err||''))&&!(r.text||'').trim()){sessionId=uuid();resume=false;r=await once(false)}
+    rmImg();
     /* nada de mexer nos arquivos internos do Shark Lab */
     const changed=diffSnap(dir,files),out={ok:true,sid:sessionId,changed:changed.slice(0,40),n:changed.length,bk:(changed.length||FLAT)?stamp:null,flat:FLAT,main};
     if(!changed.length&&!FLAT){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}}
@@ -128,4 +138,4 @@ module.exports=function setup(ipcMain,H){
     if(snapList)for(const r of walk(dir,'',[]))if(!snapList.includes(r)){try{fs.rmSync(path.join(dir,r),{force:true})}catch{}}
     if(Array.isArray(meta.ops))fs.writeFileSync(path.join(dir,'_sl_ops.json'),JSON.stringify(meta.ops));fs.rmSync(bkDir,{recursive:true,force:true});return{ok:true,ops:Array.isArray(meta.ops)?meta.ops:null}}catch(e){return{ok:false,error:String(e.message||e)}}});
 };
-module.exports._t={snapshot,diffSnap,walk};
+module.exports._t={snapshot,diffSnap,walk,cleanJunk};module.exports.cleanJunk=cleanJunk;
