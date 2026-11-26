@@ -13,9 +13,15 @@ Regras:
 - Mantenha a página responsiva (celular primeiro). Use valores de CSS concretos (cores hex, px/rem).
 - Se faltar informação para fazer certo, pergunte em vez de adivinhar. Nunca invente links, preços, depoimentos ou imagens: use só o que já existe na pasta ou o que o usuário indicar.
 - Reduzir o peso (KB) das imagens é feito pelo próprio app, antes de você. Nunca diga que isso não é possível: se vier uma informação do app sobre isso, comente em uma frase.
-- Antes de dizer que mudou algo, releia o trecho editado e confirme que a mudança está lá. Procure TODOS os lugares que controlam aquilo (CSS, estilos inline, scripts inline, arquivos .js e .css da pasta, opções de bibliotecas como Swiper/Splide/Slick). Ex.: a velocidade de um carrossel pode estar em animation-duration, em setInterval/autoplay ou em transition: mude onde realmente vale.
+- Antes de dizer que mudou algo, releia o trecho editado e confirme que a mudança está lá. Use o MAPA DA PÁGINA da mensagem como ponto de partida, mas confirme lendo os arquivos. Procure TODOS os lugares que controlam aquilo (CSS, estilos inline, scripts inline, arquivos .js e .css da pasta, opções de bibliotecas como Swiper/Splide/Slick). Ex.: a velocidade de um carrossel pode estar em animation-duration, em setInterval/autoplay ou em transition: mude onde realmente vale.
 - O usuário também faz edições visuais no editor; elas ficam guardadas à parte e valem por cima do HTML. Se uma mudança sua pode não aparecer por isso, avise em vez de afirmar que mudou.
 - Cuidado máximo para não quebrar a página: nunca deixe tag, aspas, chaves, <script>, <style> ou comentário sem fechar; não apague scripts que você não entendeu. A página não pode ficar em branco nem travar (nada de laços infinitos, timers de poucos milissegundos ou animações pesadas).
+Especialista em páginas que vendem: quando o usuário pedir para criar, melhorar, reescrever ou "deixar mais vendedor/bonito", trabalhe como um redator e designer de resposta direta de altíssimo nível para infoprodutos no Brasil (front, upsell, downsell, obrigado). Num pedido pontual (trocar cor, tamanho, velocidade...), faça só o ajuste, sem redesenhar nada.
+- Antes de escrever, entenda produto, público, maior dor e promessa; se faltar isso e for decisivo, pergunte uma vez, curto.
+- Copy: título com produto + resultado concreto; uma ideia por seção; frases curtas; dores específicas do dia a dia e benefícios (não recursos); quebra de objeções (preço, medo de não conseguir, tempo); prova concreta (o que a pessoa recebe, como funciona em 3 passos); garantia e perguntas frequentes; preço com âncora ("De R$ X por R$ Y"), pagamento único e conta por unidade quando ajudar; urgência só se for real. Botões com verbo, curtos, que caibam no celular. Nunca invente depoimentos, números, resultados, preços ou links.
+- Cada tipo tem sua abordagem: FRONT (promessa, mostrar o produto por dentro logo no começo, dores, como funciona, bônus, pacotes, garantia, perguntas, chamada final); UPSELL (continuação natural do que ele acabou de comprar, um benefício central, lista do que entra no pedido, aceitar em destaque e recusar discreto e respeitoso); DOWNSELL (oferta menor ou desconto visual, curta, sem repetir o upsell); OBRIGADO (confirmar, próximos passos claros, acesso, suporte, sem distrair).
+- Design: celular primeiro; muito espaço entre seções (cerca de 80px) e cartões com cantos arredondados; poucas cores harmônicas (uma cor de marca, uma de ação, neutros) com contraste forte para leitura; hierarquia clara (título grande, subtítulo menor, texto confortável com 16px ou mais); botão principal grande, repetido ao longo da página, com a mesma cor de ação; alinhamentos e espaçamentos consistentes; ícones em SVG de linha; animações leves e sem travar; respeite o estilo e as cores que a página já tem, a não ser que ele peça outro.
+- Onde faltar imagem real, deixe um quadro claro para o usuário colocar a dele em vez de inventar. Checkout: mantenha os links e códigos de compra que já existem, intactos; links novos ficam com href="#".
 - Você não executa comandos e não acessa a internet.
 - Memória: se o usuário disser uma preferência que deve valer sempre daqui para frente (ex.: "sempre", "nunca", "de agora em diante", "lembre que", "eu prefiro"), termine a resposta com uma última linha exatamente assim: MEMORIA: <regra curta em português>. Só faça isso quando ele disser claramente; nunca para pedidos pontuais e nunca invente preferências.`;
 
@@ -80,10 +86,31 @@ function brokenWhy(a,b){if(!a||!b)return'';
   if(ne.length)return'erro novo no código: '+ne[0].slice(0,140);
   if(a.t>=15&&b.t===0)return'a página ficou em branco';
   if(a.vis>=2&&b.vis===0&&b.t<5)return'a página ficou em branco';
-  if(a.t>80&&b.t<a.t*.5)return'o texto da página sumiu';
-  if(a.h>400&&b.h<a.h*.5)return'a página ficou muito menor, como se tivesse sumido';
-  if(a.vis>6&&b.vis<a.vis*.5)return'quase tudo ficou invisível';
+  if(a.t>80&&b.t<a.t*.35&&(b.h<a.h*.6||b.vis<a.vis*.6))return'o texto da página sumiu';
+  if(a.h>400&&b.h<a.h*.35)return'a página ficou muito menor, como se tivesse sumido';
+  if(a.vis>6&&b.vis<a.vis*.3)return'quase tudo ficou invisível';
   return''}
+
+/* ---- mapa da página: onde ficam carrosséis, tempos e seções (para o Claude não procurar no escuro) ---- */
+const SPEEDQ=/veloc|lent[oa]s?\b|devagar|r[áa]pid|acelera|mais calm|mais suave|tempo d[aeo]|segundos|animaç/i;
+const TIMERE=[/animation(?:-duration|-delay)?\s*:[^;}{]*/gi,/transition(?:-duration|-delay)?\s*:[^;}{]*/gi,/--[\w-]*(?:speed|dur|time|delay|veloc|tempo)[\w-]*\s*:[^;}{]+/gi,/setInterval\s*\([\s\S]{0,300}?,\s*\d+\s*\)/gi,/setTimeout\s*\([\s\S]{0,300}?,\s*\d+\s*\)/gi,/\b(?:delay|speed|autoplay|duration|interval|autoplaySpeed|slidesPerView|pauseOnHover|loop)\s*:\s*(?:\{[^}]*\}|[\w.]+)/gi,/data-(?:interval|autoplay|speed|delay)\s*=\s*["'][^"']*["']/gi,/(?:scroll-behavior|animation-play-state|animation-timing-function)\s*:[^;}{]*/gi];
+function textFiles(dir){const out=[];let tot=0;for(const r of walk(dir,'',[])){if(!/\.(html?|css|js|mjs)$/i.test(r))continue;let st;try{st=fs.statSync(path.join(dir,r))}catch{continue}if(st.size>1.5e6||tot>4e6)continue;tot+=st.size;try{out.push({r,t:fs.readFileSync(path.join(dir,r),'utf8')})}catch{}}return out}
+function timings(files){const out=[];for(const f of files){for(const re of TIMERE){re.lastIndex=0;let m,n=0;while((m=re.exec(f.t))&&n++<200){const x=m[0].replace(/\s+/g,' ').trim();if(/\d/.test(x)||/linear|ease|infinite|loop|paused|running|smooth/i.test(x))out.push({f:f.r,x:x.slice(0,140),i:m.index})}}}return out}
+function timingSig(dir){try{return hashOf(timings(textFiles(dir)).map(o=>o.f+'|'+o.x).sort().join('\n'))}catch{return''}}
+function pageMap(dir,main){try{const files=textFiles(dir),mh=main.replace(/^\//,'');const L=[];
+  const html=(files.find(f=>f.r==mh)||{t:''}).t,all=files.map(f=>f.t).join('\n');
+  const libs=[];for(const [n,re] of [['Swiper',/swiper/i],['Splide',/splide/i],['Slick',/slick(?:-slider|\.min|\()/i],['Owl Carousel',/owl-?carousel/i],['Flickity',/flickity/i],['Glide',/glide\.js|new Glide/i],['Embla',/embla/i],['GSAP',/gsap/i],['AOS',/\baos\b/i]])if(re.test(all))libs.push(n);
+  L.push('Arquivos: '+files.map(f=>f.r).slice(0,14).join(', '));
+  if(libs.length)L.push('Bibliotecas: '+libs.join(', '));
+  const car=new Set(),cre=/<([a-z0-9]+)\b[^>]*\b(?:id|class)=["']([^"']*(?:carousel|carrossel|slider|swiper|splide|slick|marquee|ticker|track|trk|slides?|reel|belt)[^"']*)["']/gi;let m;while((m=cre.exec(html))&&car.size<8)car.add('<'+m[1]+' '+(/id=/.test(m[0])&&m[0].match(/id=["']([^"']+)/)?'id="'+m[0].match(/id=["']([^"']+)/)[1]+'" ':'')+'class="'+m[2].slice(0,60)+'">');
+  if(car.size)L.push('Carrosséis/faixas que se mexem: '+[...car].join(' ; '));
+  const T=timings(files);const seen=new Set(),tl=[];for(const o of T){const k=o.f+o.x;if(seen.has(k))continue;seen.add(k);if(/^(transition|animation-timing|scroll-behavior)/i.test(o.x)&&!/\d+(\.\d+)?m?s/.test(o.x))continue;const before=files.find(f=>f.r==o.f).t.slice(Math.max(0,o.i-90),o.i);const sel=(before.match(/([^{};>]*)\{[^{}]*$/)||[])[1];tl.push('- '+o.f+(sel?' ['+sel.trim().replace(/\s+/g,' ').slice(0,50)+']':'')+': '+o.x);if(tl.length>=24)break}
+  if(tl.length)L.push('Tempos, velocidades e animações encontrados (mude onde realmente vale):\n'+tl.join('\n'));
+  const hs=[];const hre=/<h([12])\b[^>]*>([\s\S]*?)<\/h\1>/gi;while((m=hre.exec(html))&&hs.length<12){const t=m[2].replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();if(t)hs.push(t.slice(0,60))}
+  if(hs.length)L.push('Títulos da página, em ordem: '+hs.join(' | '));
+  const nb=(html.match(/<(?:button|a)\b/gi)||[]).length,ni=(html.match(/<img\b/gi)||[]).length,nf=(html.match(/<form\b/gi)||[]).length;L.push('Tem '+nb+' botões/links, '+ni+' imagens, '+nf+' formulários.');
+  try{const ops=JSON.parse(fs.readFileSync(path.join(dir,'_sl_ops.json'),'utf8'));if(Array.isArray(ops)&&ops.length)L.push('ATENÇÃO: o usuário fez '+ops.length+' edição(ões) visual(is) no editor, guardadas à parte (não estão no HTML) e valem por cima dele. Se o que ele pede pode ser afetado por isso, avise.')}catch{}
+  return L.join('\n').slice(0,4800)}catch{return''}}
 module.exports=function setup(ipcMain,H){
   const BK=()=>path.join(H.userData(),'ccbak'),RUN=new Map();
   const send=(wc,o)=>{try{if(!wc.isDestroyed())wc.send('cc:evt',o)}catch{}};
@@ -106,7 +133,8 @@ module.exports=function setup(ipcMain,H){
     const memF=path.join(H.userData(),'cc-memoria.json'),mem=memLoad(memF);const sysF=path.join(H.userData(),'cc-sys.txt');try{fs.writeFileSync(sysF,SYS+(mem.length?'\n\nPreferências já combinadas com o usuário (siga sempre):\n'+mem.map(x=>'- '+x).join('\n'):''))}catch{}
     const imgDir=path.join(H.userData(),'ccimg',id+'-'+stamp),imgP=[];
     try{if(Array.isArray(imgs)&&imgs.length){fs.mkdirSync(imgDir,{recursive:true});imgs.slice(0,4).forEach((x,i)=>{const m=/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(String(x&&x.data||''));if(!m)return;const f=path.join(imgDir,'imagem'+(i+1)+'.'+(m[1].toLowerCase()=='jpeg'?'jpg':m[1].toLowerCase()));fs.writeFileSync(f,Buffer.from(m[2],'base64'));imgP.push(f)})}}catch{}
-    const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
+    const MAP=pageMap(dir,main),SIG0=timingSig(dir),speedQ=SPEEDQ.test(String(prompt||''));
+    const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+(MAP?`<mapa_da_pagina>\n${MAP}\n</mapa_da_pagina>\n\n`:'')+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
     let sessionId=sid&&/^[0-9a-f-]{36}$/i.test(sid)?sid:uuid(),resume=!!(sid&&/^[0-9a-f-]{36}$/i.test(sid));
     const once=(useResume,m2)=>new Promise(res=>{
       const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(imgP.length?['--add-dir',imgDir]:[]).concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
@@ -130,10 +158,17 @@ module.exports=function setup(ipcMain,H){
     rmImg();
     /* nada de mexer nos arquivos internos do Shark Lab */
     const changed=diffSnap(dir,files),out={ok:true,sid:sessionId,changed:changed.slice(0,40),n:changed.length,bk:(changed.length||FLAT)?stamp:null,flat:FLAT,main};
-    let reverted='',fixed=0;
+    let reverted='',fixed=0,speedNo=0;
+    if(speedQ&&!r.canceled&&!r.timeout&&r.final&&!r.final.is_error&&timingSig(dir)===SIG0){
+      send(wc,{rid,k:'note',t:'Nenhum tempo mudou ainda. Procurando de novo onde a velocidade é controlada…'});
+      const r3=await once(true,'ATENÇÃO: o pedido foi sobre velocidade/tempo, mas nenhum valor de tempo mudou nos arquivos da página (animation-duration, transition, setInterval, autoplay, speed, variáveis CSS...). Veja de novo o MAPA DA PÁGINA, abra os arquivos que controlam o movimento e mude de verdade, onde vale. Se for uma biblioteca, mude as opções dela. Se for impossível, explique o motivo em uma frase. Pedido do usuário: '+String(prompt||'').slice(0,400));
+      if(r3&&r3.final&&!r3.final.is_error)r=r3;
+      if(timingSig(dir)===SIG0)speedNo=1}
+    {const c0=diffSnap(dir,files);changed.length=0;c0.forEach(x=>changed.push(x))}
     if(changed.length&&!r.canceled&&!r.timeout&&H.probe){
       send(wc,{rid,k:'note',t:'Conferindo se a página ficou certa…'});
       const base=await baseP;let post=await H.probe(id).catch(()=>null),why=brokenWhy(base,post);
+      if(why){await new Promise(x=>setTimeout(x,1500));post=await H.probe(id).catch(()=>null);why=brokenWhy(base,post)}
       if(why){send(wc,{rid,k:'note',t:'Achei um problema ('+why+'). Corrigindo…'});
         const fixMsg='ATENÇÃO: depois da sua alteração a página ficou com problema ('+why+'). Corrija agora: reverta com cuidado o trecho que quebrou e refaça o pedido de forma segura, sem apagar o que já funcionava. Pedido original do usuário: '+String(prompt||'').slice(0,400);
         const r2=await once(true,fixMsg);if(r2&&r2.final&&!r2.final.is_error){r=r2}
@@ -141,7 +176,7 @@ module.exports=function setup(ipcMain,H){
         post=await H.probe(id).catch(()=>null);why=brokenWhy(base,post);
         if(!why)fixed=1;
         else{try{restoreBk(dir,bkDir)}catch{}reverted=why;changed.length=0}}}
-    out.n=changed.length;out.changed=changed.slice(0,40);out.bk=(changed.length||FLAT)?stamp:null;if(reverted)out.reverted=reverted;if(fixed)out.fixed=1;
+    out.n=changed.length;out.changed=changed.slice(0,40);out.bk=(changed.length||FLAT)?stamp:null;if(reverted)out.reverted=reverted;if(fixed)out.fixed=1;if(speedNo&&!reverted)out.speedNo=1;
     if(!changed.length&&!FLAT){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}}
     else{try{const L=fs.readdirSync(path.join(BK(),id)).sort();while(L.length>15){fs.rmSync(path.join(BK(),id,L.shift()),{recursive:true,force:true})}}catch{}}
     if(r.err&&!r.final&&r.needInstall){out.ok=false;out.needInstall=1;return out}
@@ -166,4 +201,4 @@ module.exports=function setup(ipcMain,H){
     restoreBk(dir,bkDir);
     if(Array.isArray(meta.ops))fs.writeFileSync(path.join(dir,'_sl_ops.json'),JSON.stringify(meta.ops));fs.rmSync(bkDir,{recursive:true,force:true});return{ok:true,ops:Array.isArray(meta.ops)?meta.ops:null}}catch(e){return{ok:false,error:String(e.message||e)}}});
 };
-module.exports._t={snapshot,diffSnap,walk,cleanJunk};module.exports.cleanJunk=cleanJunk;
+module.exports._t={snapshot,diffSnap,walk,cleanJunk,pageMap,timingSig};module.exports.cleanJunk=cleanJunk;

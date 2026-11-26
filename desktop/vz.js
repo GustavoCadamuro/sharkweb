@@ -42,13 +42,13 @@ module.exports=function setup(ipcMain,H,net){
       busy=0;return{ok:true}}
     catch(x){busy=0;return{ok:false,error:String(x.message||x)}}});
 
-  ipcMain.handle('vz:run',(_,{wav})=>new Promise(res=>{
+  ipcMain.handle('vz:run',(_,{wav,prev})=>new Promise(res=>{
     if(!ready())return res({ok:false,error:'O reconhecimento de voz ainda não está instalado.'});if(run)return res({ok:false,error:'Já estou transcrevendo.'});
     let buf;try{buf=Buffer.from(wav)}catch{return res({ok:false,error:'áudio inválido'})}if(buf.length<2000||buf.length>60e6)return res({ok:false,error:'áudio inválido'});
     const f=path.join(os.tmpdir(),'sl-voz-'+Date.now()+'.wav');try{fs.writeFileSync(f,buf)}catch(x){return res({ok:false,error:String(x.message||x)})}
     const bin=exe(),th=Math.max(2,Math.min(8,(os.cpus()||[]).length-1||4));run=1;let out='',er='',done=0;
     const fin=r=>{if(done)return;done=1;run=0;clearTimeout(tm);try{fs.rmSync(f,{force:true})}catch{}res(r)};
-    let p;try{p=spawn(bin,['-m',model(),'-f',f,'-l','pt','-nt','-np','-t',String(th),'--prompt',PROMPT],{cwd:path.dirname(bin),windowsHide:true})}catch(x){return fin({ok:false,error:String(x.message||x)})}
+    let p;try{p=spawn(bin,['-m',model(),'-f',f,'-l','pt','-nt','-np','-t',String(th),'--prompt',PROMPT+(typeof prev=='string'&&prev.trim()?' '+prev.trim().slice(-160):'')],{cwd:path.dirname(bin),windowsHide:true})}catch(x){return fin({ok:false,error:String(x.message||x)})}
     const tm=setTimeout(()=>{try{p.kill()}catch{}fin({ok:false,error:'Demorou demais para transcrever.'})},150000);
     p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>er+=d);p.on('error',x=>fin({ok:false,error:String(x.message||x)}));
     p.on('close',c=>{let t=out.replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();if(GHOST.test(t))t='';if(c!==0&&!t)return fin({ok:false,error:'Não consegui transcrever.'+(er?' '+er.trim().split('\n').slice(-1)[0].slice(0,100):'')});fin({ok:true,text:t})})}));
