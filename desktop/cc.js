@@ -13,6 +13,9 @@ Regras:
 - Mantenha a página responsiva (celular primeiro). Use valores de CSS concretos (cores hex, px/rem).
 - Se faltar informação para fazer certo, pergunte em vez de adivinhar. Nunca invente links, preços, depoimentos ou imagens: use só o que já existe na pasta ou o que o usuário indicar.
 - Reduzir o peso (KB) das imagens é feito pelo próprio app, antes de você. Nunca diga que isso não é possível: se vier uma informação do app sobre isso, comente em uma frase.
+- Antes de dizer que mudou algo, releia o trecho editado e confirme que a mudança está lá. Procure TODOS os lugares que controlam aquilo (CSS, estilos inline, scripts inline, arquivos .js e .css da pasta, opções de bibliotecas como Swiper/Splide/Slick). Ex.: a velocidade de um carrossel pode estar em animation-duration, em setInterval/autoplay ou em transition: mude onde realmente vale.
+- O usuário também faz edições visuais no editor; elas ficam guardadas à parte e valem por cima do HTML. Se uma mudança sua pode não aparecer por isso, avise em vez de afirmar que mudou.
+- Cuidado máximo para não quebrar a página: nunca deixe tag, aspas, chaves, <script>, <style> ou comentário sem fechar; não apague scripts que você não entendeu. A página não pode ficar em branco nem travar (nada de laços infinitos, timers de poucos milissegundos ou animações pesadas).
 - Você não executa comandos e não acessa a internet.
 - Memória: se o usuário disser uma preferência que deve valer sempre daqui para frente (ex.: "sempre", "nunca", "de agora em diante", "lembre que", "eu prefiro"), termine a resposta com uma última linha exatamente assim: MEMORIA: <regra curta em português>. Só faça isso quando ele disser claramente; nunca para pedidos pontuais e nunca invente preferências.`;
 
@@ -66,6 +69,21 @@ function diffSnap(dir,files){const now={};for(const r of walk(dir,'',[])){const 
   const ch=[];for(const r of Object.keys(now)){const o=files[r];if(!o){ch.push(r);continue}if(o.t){if(now[r].size>MAXT){ch.push(r);continue}let b;try{b=fs.readFileSync(path.join(dir,r))}catch{continue}if(hashOf(b)!==o.h)ch.push(r)}else if(now[r].size!==o.s)ch.push(r)}
   for(const r of Object.keys(files))if(!now[r])ch.push(r);return ch}
 
+function restoreBk(dir,bkDir){const was=walk(path.join(bkDir,'files'),'',[]);
+  for(const r of was){const o=path.join(dir,r);fs.mkdirSync(path.dirname(o),{recursive:true});fs.copyFileSync(path.join(bkDir,'files',r),o)}
+  let snapList=null;try{snapList=JSON.parse(fs.readFileSync(path.join(bkDir,'list.json'),'utf8'))}catch{}
+  if(snapList)for(const r of walk(dir,'',[]))if(!snapList.includes(r)){try{fs.rmSync(path.join(dir,r),{force:true})}catch{}}}
+/* a pagina "quebrou"? compara como ela carregava antes e depois da mudanca */
+function brokenWhy(a,b){if(!a||!b)return'';
+  if(b.load===0&&a.load!==0)return'a página não abre mais';
+  const ne=(b.errs||[]).filter(x=>!(a.errs||[]).some(y=>y.slice(0,70)==x.slice(0,70))&&/Uncaught|SyntaxError|ReferenceError|TypeError|is not defined|Unexpected token|Cannot read/i.test(x));
+  if(ne.length)return'erro novo no código: '+ne[0].slice(0,140);
+  if(a.t>=15&&b.t===0)return'a página ficou em branco';
+  if(a.vis>=2&&b.vis===0&&b.t<5)return'a página ficou em branco';
+  if(a.t>80&&b.t<a.t*.5)return'o texto da página sumiu';
+  if(a.h>400&&b.h<a.h*.5)return'a página ficou muito menor, como se tivesse sumido';
+  if(a.vis>6&&b.vis<a.vis*.5)return'quase tudo ficou invisível';
+  return''}
 module.exports=function setup(ipcMain,H){
   const BK=()=>path.join(H.userData(),'ccbak'),RUN=new Map();
   const send=(wc,o)=>{try{if(!wc.isDestroyed())wc.send('cc:evt',o)}catch{}};
@@ -90,7 +108,7 @@ module.exports=function setup(ipcMain,H){
     try{if(Array.isArray(imgs)&&imgs.length){fs.mkdirSync(imgDir,{recursive:true});imgs.slice(0,4).forEach((x,i)=>{const m=/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(String(x&&x.data||''));if(!m)return;const f=path.join(imgDir,'imagem'+(i+1)+'.'+(m[1].toLowerCase()=='jpeg'?'jpg':m[1].toLowerCase()));fs.writeFileSync(f,Buffer.from(m[2],'base64'));imgP.push(f)})}}catch{}
     const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
     let sessionId=sid&&/^[0-9a-f-]{36}$/i.test(sid)?sid:uuid(),resume=!!(sid&&/^[0-9a-f-]{36}$/i.test(sid));
-    const once=(useResume)=>new Promise(res=>{
+    const once=(useResume,m2)=>new Promise(res=>{
       const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(imgP.length?['--add-dir',imgDir]:[]).concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
       let p;try{p=spawn(b.bin,args,{cwd:dir,env:cleanEnv(),windowsHide:true,shell:needShell(b.bin),stdio:['pipe','pipe','pipe']})}catch(er){return res({err:String(er.message||er)})}
       const st={p,canceled:0};RUN.set(id,st);let buf='',err='',final=null,text='',lim=null;const tm=setTimeout(()=>{st.timeout=1;kill(p)},12*60*1000);
@@ -104,13 +122,26 @@ module.exports=function setup(ipcMain,H){
       p.stderr.on('data',d=>{err+=d});
       p.on('error',er=>{clearTimeout(tm);RUN.delete(id);res({err:String(er.code=='ENOENT'?'não encontrei o claude':er.message),needInstall:er.code=='ENOENT'})});
       p.on('close',code=>{clearTimeout(tm);if(buf.trim())line(buf);RUN.delete(id);res({code,final,err,text,lim,canceled:st.canceled,timeout:st.timeout})});
-      try{p.stdin.on('error',()=>{});p.stdin.end(msg)}catch{}});
+      try{p.stdin.on('error',()=>{});p.stdin.end(m2||msg)}catch{}});
     const rmImg=()=>{try{fs.rmSync(imgDir,{recursive:true,force:true})}catch{}};
+    const baseP=H.probe?H.probe(id).catch(()=>null):Promise.resolve(null);
     let r=await once(resume);
     if(resume&&r&&!r.canceled&&r.final&&r.final.is_error&&/no conversation found|session/i.test(String(r.final.result||r.err||''))&&!(r.text||'').trim()){sessionId=uuid();resume=false;r=await once(false)}
     rmImg();
     /* nada de mexer nos arquivos internos do Shark Lab */
     const changed=diffSnap(dir,files),out={ok:true,sid:sessionId,changed:changed.slice(0,40),n:changed.length,bk:(changed.length||FLAT)?stamp:null,flat:FLAT,main};
+    let reverted='',fixed=0;
+    if(changed.length&&!r.canceled&&!r.timeout&&H.probe){
+      send(wc,{rid,k:'note',t:'Conferindo se a página ficou certa…'});
+      const base=await baseP;let post=await H.probe(id).catch(()=>null),why=brokenWhy(base,post);
+      if(why){send(wc,{rid,k:'note',t:'Achei um problema ('+why+'). Corrigindo…'});
+        const fixMsg='ATENÇÃO: depois da sua alteração a página ficou com problema ('+why+'). Corrija agora: reverta com cuidado o trecho que quebrou e refaça o pedido de forma segura, sem apagar o que já funcionava. Pedido original do usuário: '+String(prompt||'').slice(0,400);
+        const r2=await once(true,fixMsg);if(r2&&r2.final&&!r2.final.is_error){r=r2}
+        const ch2=diffSnap(dir,files);changed.length=0;ch2.forEach(x=>changed.push(x));
+        post=await H.probe(id).catch(()=>null);why=brokenWhy(base,post);
+        if(!why)fixed=1;
+        else{try{restoreBk(dir,bkDir)}catch{}reverted=why;changed.length=0}}}
+    out.n=changed.length;out.changed=changed.slice(0,40);out.bk=(changed.length||FLAT)?stamp:null;if(reverted)out.reverted=reverted;if(fixed)out.fixed=1;
     if(!changed.length&&!FLAT){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}}
     else{try{const L=fs.readdirSync(path.join(BK(),id)).sort();while(L.length>15){fs.rmSync(path.join(BK(),id,L.shift()),{recursive:true,force:true})}}catch{}}
     if(r.err&&!r.final&&r.needInstall){out.ok=false;out.needInstall=1;return out}
@@ -132,11 +163,7 @@ module.exports=function setup(ipcMain,H){
   ipcMain.handle('cc:undo',(_,{id,bk})=>{try{if(!okId(id)||!/^[\w-]+$/.test(String(bk||'')))return{ok:false,error:'cópia inválida'};
     const bkDir=path.join(BK(),id,bk),mf=path.join(bkDir,'meta.json');if(!fs.existsSync(mf))return{ok:false,error:'Não tenho mais a cópia desta alteração.'};
     const meta=JSON.parse(fs.readFileSync(mf,'utf8')),dir=path.join(H.MD(),id);if(!fs.existsSync(dir))return{ok:false,error:'Página não encontrada.'};
-    const was=walk(path.join(bkDir,'files'),'',[]),wasSet=new Set(was);
-    for(const r of was){const o=path.join(dir,r);fs.mkdirSync(path.dirname(o),{recursive:true});fs.copyFileSync(path.join(bkDir,'files',r),o)}
-    /* arquivos de texto criados depois da cópia saem; os que não são texto nunca foram tocados */
-    let snapList=null;try{snapList=JSON.parse(fs.readFileSync(path.join(bkDir,'list.json'),'utf8'))}catch{}
-    if(snapList)for(const r of walk(dir,'',[]))if(!snapList.includes(r)){try{fs.rmSync(path.join(dir,r),{force:true})}catch{}}
+    restoreBk(dir,bkDir);
     if(Array.isArray(meta.ops))fs.writeFileSync(path.join(dir,'_sl_ops.json'),JSON.stringify(meta.ops));fs.rmSync(bkDir,{recursive:true,force:true});return{ok:true,ops:Array.isArray(meta.ops)?meta.ops:null}}catch(e){return{ok:false,error:String(e.message||e)}}});
 };
 module.exports._t={snapshot,diffSnap,walk,cleanJunk};module.exports.cleanJunk=cleanJunk;

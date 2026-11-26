@@ -75,6 +75,25 @@ let cfr=null;try{const U8={};for(const p in OUT)U8[p]=new Uint8Array(OUT[p]);cfr
 for(let p in OUT){let q=p;if(DIRS.has(p)){q=p+(/^\s*[<]/.test(OUT[p].slice(0,40).toString())?'/index.html':'/index.json')}try{const fp=path.join(dir,q);fs.mkdirSync(path.dirname(fp),{recursive:true});fs.writeFileSync(fp,OUT[p]);n++}catch{}}}
 if(th)fs.writeFileSync(path.join(dir,'_sl_thumb.jpg'),Buffer.from(th,'base64'));let hr=null;try{hr=await healMirror(id,fin.href,{ms:12000})}catch{}return{ok:true,count:n+(hr&&hr.fixed?hr.fixed.length:0),thumb:th?1:0,more:cfr,heal:hr}}catch(e){return{ok:false,error:String(e.message||e)}}finally{try{d.detach()}catch{}w.destroy()}});
 /* ===== Verificacao da copia (v60): abre a copia escondida, acelera a animacao e baixa do site original o que falta ou esta danificado ===== */
+/* v63.78: abre a pagina escondida (sem pixel, sem enviar nada) e mede se ela carrega inteira; usado para conferir o que o Claude mudou */
+async function pageProbe(id){
+  const ses=session.fromPartition('pr'+Date.now()+Math.random().toString(36).slice(2));ses.protocol.handle('mirror',mh);
+  ses.setPermissionRequestHandler((_w,_p,cb)=>cb(false));ses.setPermissionCheckHandler(()=>false);
+  ses.webRequest.onBeforeRequest((d,cb)=>{if(trkBlock(d.url))return cb({cancel:true});const m=String(d.method||'GET').toUpperCase();if(m!='GET'&&m!='HEAD'&&m!='OPTIONS'&&/^https?:/i.test(d.url))return cb({cancel:true});cb({})});
+  const w=new BrowserWindow({show:false,width:1280,height:900,webPreferences:{session:ses,offscreen:true,backgroundThrottling:false}}),errs=[];
+  try{
+    w.webContents.on('console-message',(e,l,m)=>{if(l>=3&&errs.length<25)errs.push(String(m).slice(0,220))});
+    w.webContents.setWindowOpenHandler(()=>({action:'deny'}));
+    const stay=(e,u)=>{const x=String(u).toLowerCase(),m=('mirror://'+id).toLowerCase();if(!(x.startsWith(m+'/')||x.startsWith(m+'?')))e.preventDefault()};
+    w.webContents.on('will-navigate',stay);w.webContents.on('will-redirect',stay);
+    let load=1;await Promise.race([w.loadURL('mirror://'+id+'/').catch(()=>{load=0}),sl(15000)]);
+    await sl(2600);
+    const js='(()=>{const b=document.body;let vis=0;const q=document.querySelectorAll("img,h1,h2,h3,p,button,a,li");for(const e of q){const c=getComputedStyle(e);if(c.display!="none"&&c.visibility!="hidden"&&c.opacity!="0")vis++}return JSON.stringify({t:((b&&b.innerText)||"").trim().length,h:Math.max(document.documentElement.scrollHeight,b?b.scrollHeight:0),vis})})()';
+    let D=null;try{D=JSON.parse(await Promise.race([w.webContents.executeJavaScript(js),sl(6000).then(()=>null)])||'null')}catch{}
+    if(!D)return{load:0,t:0,h:0,vis:0,errs};
+    return{load,t:D.t,h:D.h,vis:D.vis,errs}
+  }catch{return null}finally{try{w.destroy()}catch{}}
+}
 async function diagRun(id,ms){
   MISS.set(id,new Set());
   const ses=session.fromPartition('dg'+Date.now()+Math.random().toString(36).slice(2));ses.protocol.handle('mirror',mh);
@@ -272,7 +291,7 @@ return{ok:true,text:text.trim(),ops,cut:j.stop_reason=='max_tokens'}}catch(e){re
 const CKU=()=>process.env.SL_CAKTO_URL||'https://api.cakto.com.br',FBU=()=>process.env.SL_META_URL||'https://graph.facebook.com';
 async function jf(url,opt){const r=await fetch(url,opt),t=await r.text();let j=null;try{j=JSON.parse(t)}catch{}if(!r.ok){const e=new Error((j&&((j.error&&(j.error.message||j.error))||j.detail||j.message))||t.slice(0,160)||('Erro '+r.status));e.status=r.status;throw e}return j}
 const SLX=require('./trkx.js')(jf,{fb:FBU()});
-try{require('./cc.js')(ipcMain,{MD,mainHtml,userData:()=>app.getPath('userData')})}catch(e){console.error('cc.js',e&&e.message)}
+try{require('./cc.js')(ipcMain,{MD,mainHtml,probe:pageProbe,userData:()=>app.getPath('userData')})}catch(e){console.error('cc.js',e&&e.message)}
 try{require('./vz.js')(ipcMain,{userData:()=>app.getPath('userData')},net)}catch(e){console.error('vz.js',e&&e.message)}
 /* v63.76: limpa uma vez as copias que ficaram com a alca de arrastar do editor dentro do HTML */
 setTimeout(()=>{try{const fl=path.join(app.getPath('userData'),'mvclean.flag');if(fs.existsSync(fl))return;const cj=require('./cc.js').cleanJunk;if(!fs.existsSync(MD())){fs.writeFileSync(fl,'1');return}for(const id of fs.readdirSync(MD())){try{const dir=path.join(MD(),id),m=mainHtml(dir);if(!m)continue;const h=fs.readFileSync(dir+m,'utf8'),c=cj(h);if(c!==h)fs.writeFileSync(dir+m,c)}catch{}}fs.writeFileSync(fl,'1')}catch{}},6000);

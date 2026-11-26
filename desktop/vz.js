@@ -1,7 +1,7 @@
 'use strict';
 /* v63.77: reconhecimento de voz no proprio PC (whisper.cpp), com pontuacao. Baixa uma vez (programa + modelo) e depois funciona offline, sem API e sem custo. */
 const{spawn}=require('child_process');const fs=require('fs'),path=require('path'),os=require('os');
-const ZIPS=()=>process.env.SL_VZ_ZIP_URL?[process.env.SL_VZ_ZIP_URL]:['https://github.com/ggml-org/whisper.cpp/releases/latest/download/whisper-bin-x64.zip','https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.6/whisper-bin-x64.zip','https://github.com/ggml-org/whisper.cpp/releases/download/v1.9.5/whisper-bin-x64.zip'];
+const ZIPS=()=>process.env.SL_VZ_ZIP_URL?[process.env.SL_VZ_ZIP_URL]:['https://github.com/ggml-org/whisper.cpp/releases/download/b5907/whisper-bin-x64.zip','https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip'];
 const MODEL=()=>process.env.SL_VZ_MODEL_URL||'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
 const PROMPT='Olá! Vamos mudar a página: troque o título, aumente o botão, deixe a cor mais escura. Transcreva com pontuação correta.';
 const GHOST=/^\s*[\[(].*[\])]\s*$|legendas? pela comunidade|obrigado por assistir|inscreva-se no canal/i;
