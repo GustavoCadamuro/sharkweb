@@ -271,6 +271,7 @@ return{ok:true,text:text.trim(),ops,cut:j.stop_reason=='max_tokens'}}catch(e){re
 const CKU=()=>process.env.SL_CAKTO_URL||'https://api.cakto.com.br',FBU=()=>process.env.SL_META_URL||'https://graph.facebook.com';
 async function jf(url,opt){const r=await fetch(url,opt),t=await r.text();let j=null;try{j=JSON.parse(t)}catch{}if(!r.ok){const e=new Error((j&&((j.error&&(j.error.message||j.error))||j.detail||j.message))||t.slice(0,160)||('Erro '+r.status));e.status=r.status;throw e}return j}
 const SLX=require('./trkx.js')(jf,{fb:FBU()});
+try{require('./cc.js')(ipcMain,{MD,mainHtml,userData:()=>app.getPath('userData')})}catch(e){console.error('cc.js',e&&e.message)}
 const trkHs=tok=>crypto.createHash('sha256').update(String(tok)+'|hook').digest('hex').slice(0,24);
 ipcMain.handle('mtList',async(_,{mt,level})=>{try{const out={};for(const a of String(mt.acct||'').split(/[,;\s]+/).filter(Boolean))Object.assign(out,await SLX.metaList(mt.tok.trim(),a,((mt.ver||'').trim()||'v25.0'),level));return{ok:true,map:out}}catch(e){return{ok:false,error:String(e.message||e)}}});
 ipcMain.handle('mtCopy',async(_,{mt,id,level})=>{try{if(!/^\d{5,25}$/.test(String(id)))return{ok:false,error:'id inválido'};const r=await SLX.metaCopy(mt.tok.trim(),((mt.ver||'').trim()||'v25.0'),String(id),level);return r?{ok:true,id:r}:{ok:false,error:'O Facebook não confirmou a cópia'}}catch(e){const m=String((e&&e.message)||e);return{ok:false,error:/permission|\(#200\)|\(#10\)|OAuth/i.test(m)?'O token não tem permissão para duplicar (precisa de ads_management).':m}}});
