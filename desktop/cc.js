@@ -12,9 +12,12 @@ Regras:
 - Não apague nem renomeie arquivos, não crie arquivos sem necessidade e não mexa em arquivos que começam com _sl.
 - Mantenha a página responsiva (celular primeiro). Use valores de CSS concretos (cores hex, px/rem).
 - Se faltar informação para fazer certo, pergunte em vez de adivinhar. Nunca invente links, preços, depoimentos ou imagens: use só o que já existe na pasta ou o que o usuário indicar.
-- Você não executa comandos e não acessa a internet.`;
+- Você não executa comandos e não acessa a internet.
+- Memória: se o usuário disser uma preferência que deve valer sempre daqui para frente (ex.: "sempre", "nunca", "de agora em diante", "lembre que", "eu prefiro"), termine a resposta com uma última linha exatamente assim: MEMORIA: <regra curta em português>. Só faça isso quando ele disser claramente; nunca para pedidos pontuais e nunca invente preferências.`;
 
 const uuid=()=>crypto.randomUUID();
+const EFF={low:1,medium:1,high:1,xhigh:1,max:1};
+const memLoad=f=>{try{const a=JSON.parse(fs.readFileSync(f,'utf8'));return Array.isArray(a)?a.filter(x=>typeof x=='string'&&x.trim()).slice(0,40):[]}catch{return[]}};
 const cleanEnv=()=>{const e=Object.assign({},process.env);for(const k of['ANTHROPIC_API_KEY','ANTHROPIC_AUTH_TOKEN','CLAUDE_CODE_USE_BEDROCK','CLAUDE_CODE_USE_VERTEX','CLAUDE_CODE_USE_FOUNDRY','ELECTRON_RUN_AS_NODE'])delete e[k];e.NO_COLOR='1';return e};
 
 function candidates(){
@@ -65,7 +68,7 @@ module.exports=function setup(ipcMain,H){
   ipcMain.handle('cc:cancel',(_,{id})=>{const r=RUN.get(id);if(!r)return{ok:true};r.canceled=1;kill(r.p);return{ok:true}});
   function kill(p){if(!p)return;try{if(process.platform=='win32')spawn('taskkill',['/pid',String(p.pid),'/T','/F'],{windowsHide:true});else p.kill('SIGTERM')}catch{}}
 
-  ipcMain.handle('cc:run',async(e,{id,prompt,sid,html,ops,keep,sel,rid})=>{
+  ipcMain.handle('cc:run',async(e,{id,prompt,sid,html,ops,keep,sel,rid,effort})=>{
     if(!okId(id))return{ok:false,error:'página inválida'};if(RUN.has(id))return{ok:false,error:'Já estou trabalhando nesta página. Espere terminar.'};
     const dir=path.join(H.MD(),id);if(!fs.existsSync(dir))return{ok:false,error:'Página não encontrada.'};
     const b=await findBin();if(!b)return{ok:false,needInstall:1};
@@ -75,11 +78,11 @@ module.exports=function setup(ipcMain,H){
     const opsF=path.join(dir,'_sl_ops.json');
     /* edições visuais pendentes: a página como está na tela (com elas aplicadas) vira o arquivo principal e a lista zera */
     if(FLAT){try{fs.writeFileSync(dir+main,html);fs.writeFileSync(opsF,JSON.stringify(keep));const m=main.replace(/^\//,'');if(files[m]&&files[m].t)files[m].h=hashOf(fs.readFileSync(dir+main))}catch(er){try{fs.rmSync(bkDir,{recursive:true,force:true})}catch{}return{ok:false,error:String(er.message||er)}}}
-    const sysF=path.join(H.userData(),'cc-sys.txt');try{fs.writeFileSync(sysF,SYS)}catch{}
+    const memF=path.join(H.userData(),'cc-memoria.json'),mem=memLoad(memF);const sysF=path.join(H.userData(),'cc-sys.txt');try{fs.writeFileSync(sysF,SYS+(mem.length?'\n\nPreferências já combinadas com o usuário (siga sempre):\n'+mem.map(x=>'- '+x).join('\n'):''))}catch{}
     const msg=`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
     let sessionId=sid&&/^[0-9a-f-]{36}$/i.test(sid)?sid:uuid(),resume=!!(sid&&/^[0-9a-f-]{36}$/i.test(sid));
     const once=(useResume)=>new Promise(res=>{
-      const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
+      const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
       let p;try{p=spawn(b.bin,args,{cwd:dir,env:cleanEnv(),windowsHide:true,shell:needShell(b.bin),stdio:['pipe','pipe','pipe']})}catch(er){return res({err:String(er.message||er)})}
       const st={p,canceled:0};RUN.set(id,st);let buf='',err='',final=null,text='',lim=null;const tm=setTimeout(()=>{st.timeout=1;kill(p)},12*60*1000);
       const line=l=>{if(!l.trim())return;let o;try{o=JSON.parse(l)}catch{return}
@@ -102,10 +105,18 @@ module.exports=function setup(ipcMain,H){
     if(r.err&&!r.final&&r.needInstall){out.ok=false;out.needInstall=1;return out}
     if(r.canceled){out.canceled=1;out.text=(r.text||'').trim();return out}
     if(r.timeout){out.error='Demorou demais e eu parei. O que já foi feito foi mantido; você pode desfazer.';return out}
+    const learn=t=>{const L=[];t=String(t||'').replace(/^[ \t]*MEMORIA:[ \t]*(.+)$/gim,(_,x)=>{x=x.trim().slice(0,200);if(x)L.push(x);return''}).replace(/\n{3,}/g,'\n\n').trim();return{t,L}};
     const fin=r.final,errTxt=String((fin&&fin.result)||'')+' '+String(r.err||'');
     if(!fin){out.error=/not logged|\/login|log in/i.test(errTxt)?'':(String(r.err||'').trim().split('\n').slice(-2).join(' ').slice(0,220)||'O Claude não respondeu.');if(/not logged|\/login|log in/i.test(errTxt))out.needLogin=1;return out}
     if(fin.is_error){if(/not logged|\/login|invalid api key|authentication|credentials/i.test(errTxt))out.needLogin=1;else if(r.lim||/limit|usage|quota|overload|rate/i.test(errTxt))out.limit=1;else out.error=String(fin.result||'Erro do Claude').slice(0,220);out.text=(r.text||'').trim();return out}
-    out.text=String(fin.result||r.text||'').trim();return out});
+    const lr=learn(fin.result||r.text||'');out.text=lr.t;if(lr.L.length){const cur=memLoad(memF),add=lr.L.filter(x=>!cur.some(c=>c.toLowerCase()==x.toLowerCase()));if(add.length){try{fs.writeFileSync(memF,JSON.stringify(cur.concat(add).slice(-40)));out.learned=add}catch{}}}
+    return out});
+  ipcMain.handle('cc:mem',()=>memLoad(path.join(H.userData(),'cc-memoria.json')));
+  ipcMain.handle('cc:memdel',(_,{i})=>{const f=path.join(H.userData(),'cc-memoria.json'),a=memLoad(f);if(Number.isInteger(i)&&i>=0&&i<a.length)a.splice(i,1);try{fs.writeFileSync(f,JSON.stringify(a))}catch{}return a});
+  /* ditado: abre o "Digitação por voz" do Windows (tecla Windows + H) no campo que está com o cursor */
+  ipcMain.handle('cc:dictate',()=>new Promise(res=>{if(process.platform!='win32')return res({ok:false,error:'so no Windows'});
+    const ps="Add-Type -Namespace W -Name K -MemberDefinition '[DllImport(\"user32.dll\")] public static extern void keybd_event(byte b, byte s, uint f, UIntPtr e);';[W.K]::keybd_event(0x5B,0,0,[UIntPtr]::Zero);[W.K]::keybd_event(0x48,0,0,[UIntPtr]::Zero);Start-Sleep -Milliseconds 60;[W.K]::keybd_event(0x48,0,2,[UIntPtr]::Zero);[W.K]::keybd_event(0x5B,0,2,[UIntPtr]::Zero)";
+    try{const p=spawn('powershell.exe',['-NoProfile','-NonInteractive','-WindowStyle','Hidden','-Command',ps],{windowsHide:true});p.on('error',()=>res({ok:false}));p.on('close',c=>res({ok:c===0}))}catch{res({ok:false})}}));
 
   ipcMain.handle('cc:undo',(_,{id,bk})=>{try{if(!okId(id)||!/^[\w-]+$/.test(String(bk||'')))return{ok:false,error:'cópia inválida'};
     const bkDir=path.join(BK(),id,bk),mf=path.join(bkDir,'meta.json');if(!fs.existsSync(mf))return{ok:false,error:'Não tenho mais a cópia desta alteração.'};
