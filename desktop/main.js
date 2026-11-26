@@ -292,7 +292,10 @@ const CKU=()=>process.env.SL_CAKTO_URL||'https://api.cakto.com.br',FBU=()=>proce
 async function jf(url,opt){const r=await fetch(url,opt),t=await r.text();let j=null;try{j=JSON.parse(t)}catch{}if(!r.ok){const e=new Error((j&&((j.error&&(j.error.message||j.error))||j.detail||j.message))||t.slice(0,160)||('Erro '+r.status));e.status=r.status;throw e}return j}
 const SLX=require('./trkx.js')(jf,{fb:FBU()});
 try{require('./cc.js')(ipcMain,{MD,mainHtml,probe:pageProbe,userData:()=>app.getPath('userData')})}catch(e){console.error('cc.js',e&&e.message)}
-try{require('./vz.js')(ipcMain,{userData:()=>app.getPath('userData')},net)}catch(e){console.error('vz.js',e&&e.message)}
+let VZH=null;try{VZH=require('./vz.js')(ipcMain,{userData:()=>app.getPath('userData')},net)}catch(e){console.error('vz.js',e&&e.message)}
+const winMain=()=>BrowserWindow.getFocusedWindow()||BrowserWindow.getAllWindows().find(w=>{try{return w.webContents.getURL().startsWith('file:')}catch{return false}})||BrowserWindow.getAllWindows()[0];
+try{require('./crea.js')(ipcMain,{userData:()=>app.getPath('userData'),dialog,win:winMain,net,vz:VZH,cc:require('./cc.js')._h})}catch(e){console.error('crea.js',e&&e.message)}
+try{require('./adl.js')(ipcMain,{userData:()=>app.getPath('userData'),dialog,win:winMain,BrowserWindow,session,shell})}catch(e){console.error('adl.js',e&&e.message)}
 /* v63.76: limpa uma vez as copias que ficaram com a alca de arrastar do editor dentro do HTML */
 setTimeout(()=>{try{const fl=path.join(app.getPath('userData'),'mvclean.flag');if(fs.existsSync(fl))return;const cj=require('./cc.js').cleanJunk;if(!fs.existsSync(MD())){fs.writeFileSync(fl,'1');return}for(const id of fs.readdirSync(MD())){try{const dir=path.join(MD(),id),m=mainHtml(dir);if(!m)continue;const h=fs.readFileSync(dir+m,'utf8'),c=cj(h);if(c!==h)fs.writeFileSync(dir+m,c)}catch{}}fs.writeFileSync(fl,'1')}catch{}},6000);
 const trkHs=tok=>crypto.createHash('sha256').update(String(tok)+'|hook').digest('hex').slice(0,24);

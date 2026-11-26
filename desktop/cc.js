@@ -22,10 +22,16 @@ Especialista em páginas que vendem: quando o usuário pedir para criar, melhora
 - Cada tipo tem sua abordagem: FRONT (promessa, mostrar o produto por dentro logo no começo, dores, como funciona, bônus, pacotes, garantia, perguntas, chamada final); UPSELL (continuação natural do que ele acabou de comprar, um benefício central, lista do que entra no pedido, aceitar em destaque e recusar discreto e respeitoso); DOWNSELL (oferta menor ou desconto visual, curta, sem repetir o upsell); OBRIGADO (confirmar, próximos passos claros, acesso, suporte, sem distrair).
 - Design: celular primeiro; muito espaço entre seções (cerca de 80px) e cartões com cantos arredondados; poucas cores harmônicas (uma cor de marca, uma de ação, neutros) com contraste forte para leitura; hierarquia clara (título grande, subtítulo menor, texto confortável com 16px ou mais); botão principal grande, repetido ao longo da página, com a mesma cor de ação; alinhamentos e espaçamentos consistentes; ícones em SVG de linha; animações leves e sem travar; respeite o estilo e as cores que a página já tem, a não ser que ele peça outro.
 - Onde faltar imagem real, deixe um quadro claro para o usuário colocar a dele em vez de inventar. Checkout: mantenha os links e códigos de compra que já existem, intactos; links novos ficam com href="#".
+- MODO: a mensagem pode trazer <modo>conversa</modo> ou <modo>alterar</modo>. Em CONVERSA você não tem ferramentas de edição e não muda nada: leia a página se precisar, pense com cuidado e responda como um consultor sênior. Em ALTERAR você faz a mudança direto, sem pedir permissão.
+- Quando o usuário perguntar o que fazer, pedir opinião ou recomendações: pense fundo antes (considere público, oferta, objeções, hierarquia visual, conversão), depois responda em texto organizado e curto: 1 frase de diagnóstico, depois no máximo 3 a 5 recomendações em ordem de impacto (cada uma com o porquê em uma frase), e termine perguntando se quer que você aplique (só ofereça o que valer a pena). Nunca textão.
+- Se o usuário pedir para mostrar erros, problemas ou onde ajustar: analise a página e, ao final da resposta, liste cada ponto em uma linha exatamente assim: AJUSTE: <seletor CSS do elemento ou trecho curto e exato do texto dele> | <o que está errado e como arrumar>. No máximo 15 linhas, só problemas reais, o mais importante primeiro. O app transforma essas linhas em marcações vermelhas na página.
+- Texto que aparece em MAIÚSCULO por causa de CSS (text-transform: uppercase, veja o MAPA) está escrito em minúsculo no código de propósito: isso NÃO é erro, não mande corrigir.
 - Você não executa comandos e não acessa a internet.
 - Memória: se o usuário disser uma preferência que deve valer sempre daqui para frente (ex.: "sempre", "nunca", "de agora em diante", "lembre que", "eu prefiro"), termine a resposta com uma última linha exatamente assim: MEMORIA: <regra curta em português>. Só faça isso quando ele disser claramente; nunca para pedidos pontuais e nunca invente preferências.`;
 
 const uuid=()=>crypto.randomUUID();
+/* o texto vai para o Claude em JSON só com caracteres ASCII (\\uXXXX): acento nunca vira interrogação, qualquer que seja a página de código do Windows */
+const sendIn=t=>JSON.stringify({type:'user',message:{role:'user',content:String(t)}}).replace(/[\u007f-\uffff]/g,c=>'\\u'+('0000'+c.charCodeAt(0).toString(16)).slice(-4))+'\n';
 /* tira do HTML as pecinhas do editor (alca de arrastar etc.) que nunca devem ir para a pagina */
 function cleanJunk(h){if(typeof h!='string'||h.indexOf('id="__mv')<0&&h.indexOf("id='__mv")<0)return h;
   const re=/<div\b[^>]*\bid=["']__mv[hgl]["'][^>]*>/gi;let m,out='',last=0;
@@ -106,11 +112,24 @@ function pageMap(dir,main){try{const files=textFiles(dir),mh=main.replace(/^\//,
   if(car.size)L.push('Carrosséis/faixas que se mexem: '+[...car].join(' ; '));
   const T=timings(files);const seen=new Set(),tl=[];for(const o of T){const k=o.f+o.x;if(seen.has(k))continue;seen.add(k);if(/^(transition|animation-timing|scroll-behavior)/i.test(o.x)&&!/\d+(\.\d+)?m?s/.test(o.x))continue;const before=files.find(f=>f.r==o.f).t.slice(Math.max(0,o.i-90),o.i);const sel=(before.match(/([^{};>]*)\{[^{}]*$/)||[])[1];tl.push('- '+o.f+(sel?' ['+sel.trim().replace(/\s+/g,' ').slice(0,50)+']':'')+': '+o.x);if(tl.length>=24)break}
   if(tl.length)L.push('Tempos, velocidades e animações encontrados (mude onde realmente vale):\n'+tl.join('\n'));
+  {const up=new Set(),ure=/([^{}]+)\{[^{}]*text-transform\s*:\s*(?:uppercase|capitalize)/gi;let um;const css=files.filter(f=>/\.css$/i.test(f.r)).map(f=>f.t).concat((html.match(/<style[^>]*>[\s\S]*?<\/style>/gi)||[])).join('\n');while((um=ure.exec(css))&&up.size<10)up.add(um[1].trim().replace(/\s+/g,' ').slice(-50));if(up.size)L.push('Textos que APARECEM em maiúsculo só por estilo (text-transform), no código estão em minúsculo e isso é normal: '+[...up].join(' ; '))}
   const hs=[];const hre=/<h([12])\b[^>]*>([\s\S]*?)<\/h\1>/gi;while((m=hre.exec(html))&&hs.length<12){const t=m[2].replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();if(t)hs.push(t.slice(0,60))}
   if(hs.length)L.push('Títulos da página, em ordem: '+hs.join(' | '));
   const nb=(html.match(/<(?:button|a)\b/gi)||[]).length,ni=(html.match(/<img\b/gi)||[]).length,nf=(html.match(/<form\b/gi)||[]).length;L.push('Tem '+nb+' botões/links, '+ni+' imagens, '+nf+' formulários.');
   try{const ops=JSON.parse(fs.readFileSync(path.join(dir,'_sl_ops.json'),'utf8'));if(Array.isArray(ops)&&ops.length)L.push('ATENÇÃO: o usuário fez '+ops.length+' edição(ões) visual(is) no editor, guardadas à parte (não estão no HTML) e valem por cima dele. Se o que ele pede pode ser afetado por isso, avise.')}catch{}
   return L.join('\n').slice(0,4800)}catch{return''}}
+/* conversa ou pedido? conversa = só leitura (o Claude nem tem ferramenta de edição) */
+const IMPV='muda|mude|troca|troque|aumenta|aumente|diminui|diminua|coloca|coloque|adiciona|adicione|remove|remova|tira|tire|deixa|deixe|melhora|melhore|faz|faça|faca|corrige|corrija|ajusta|ajuste|aplica|aplique|otimiza|otimize|reduz|reduza|altera|altere|escreve|escreva|cria|crie|põe|poe|ponha|insere|insira|apaga|apague|substitui|substitua|reescreve|reescreva|traduz|traduza|move|mova|centraliza|centralize|esconde|esconda|publica|publique|limpa|limpe|conserta|conserte|arruma|arrume|inverte|inverta|duplica|duplique|renomeia|renomeie|converte|converta|acelera|acelere|desacelera|desacelere|atualiza|atualize|implementa|implemente|refaz|refaça|refaca|torna|torne|usa|use|inclui|inclua|elimina|elimine|encurta|encurte|aumentar|diminuir|trocar|mudar|colocar|adicionar|remover|tirar|deixar|melhorar|fazer|corrigir|ajustar|aplicar|otimizar|reduzir|alterar|escrever|criar|inserir|apagar|substituir|reescrever|traduzir|mover|centralizar|esconder|publicar|limpar|consertar|arrumar|acelerar|desacelerar|converter|renomear|duplicar|inverter|atualizar|implementar|refazer|incluir|eliminar|encurtar';
+const REQ=new RegExp('(?:^|[.!?\\n;,]\\s*)(?:(?:por favor|pf|então|entao|agora|e|aí|ai|também|tambem)[, ]+)*(?:(?:pode|poderia|consegue|conseguiria|dá pra|da pra|dá para|da para|vc pode|você pode|voce pode|quero que|preciso que|gostaria que|queria que|tem como|faz favor de)\\s+(?:(?:você|voce|vc)\\s+)?)?(?:'+IMPV+')\\b','i');
+const CHATQ=/^\s*(?:será|sera|o que|oq|qual|quais|como|por que|porque|por quê|pq|quando|onde|quem|quanto|você acha|voce acha|vc acha|acha que|acha q|devo|deveria|seria|vale a pena|faz sentido|me explica|explica|me diga|me fala|me conta|me ajuda a pensar|estou pensando|to pensando|tô pensando|pensei|queria conversar|vamos conversar|conversa comigo|bora pensar|vamos pensar|brainstorm|me dá ideias|me da ideias|quero ideias|ideias|sugest|recomend|opini|dica|analisa|analise|avalia|avalie|revisa|revise|confere|confira|verifica|verifique|olha|olhe|está certo|esta certo|tá certo|ta certo|tem algum erro|tem erro|quais erros|mostra onde|mostre onde|mostra os erros|mostre os erros|o que melhorar|o que falta|o que precisa|o que está|o que esta)/i;
+function intentOf(p){const t=String(p||'').trim();if(!t)return'edit';
+  if(/^(sim|ok|certo|pode|isso)\b[,. !]*(faz|faça|faca|fazer|aplica|aplique|manda ver|pode fazer|vai)/i.test(t)||/^(faça|faca|aplica|aplique|faz)\s+(isso|tudo|essas?|esses?|então|entao)/i.test(t))return'edit';
+  const pre=t.replace(/<selecionado>[\s\S]*$/,'').trim();
+  if(/^(analisa|analise|avalia|avalie|revisa|revise|confere|confira|verifica|verifique)\b/i.test(pre)||/\b(mostr\w+|aponta\w*|indica\w*|lista\w*)\s+(onde|os erros|quais|o que|tudo que)/i.test(pre)||/\b(quais|que|tem algum|tem)\s+(erros?|problemas?|falhas?)\b/i.test(pre))return'chat';
+  if(REQ.test(pre))return'edit';
+  if(CHATQ.test(pre)||/\?\s*$/.test(pre))return'chat';
+  return'edit'}
+
 module.exports=function setup(ipcMain,H){
   const BK=()=>path.join(H.userData(),'ccbak'),RUN=new Map();
   const send=(wc,o)=>{try{if(!wc.isDestroyed())wc.send('cc:evt',o)}catch{}};
@@ -133,11 +152,12 @@ module.exports=function setup(ipcMain,H){
     const memF=path.join(H.userData(),'cc-memoria.json'),mem=memLoad(memF);const sysF=path.join(H.userData(),'cc-sys.txt');try{fs.writeFileSync(sysF,SYS+(mem.length?'\n\nPreferências já combinadas com o usuário (siga sempre):\n'+mem.map(x=>'- '+x).join('\n'):''))}catch{}
     const imgDir=path.join(H.userData(),'ccimg',id+'-'+stamp),imgP=[];
     try{if(Array.isArray(imgs)&&imgs.length){fs.mkdirSync(imgDir,{recursive:true});imgs.slice(0,4).forEach((x,i)=>{const m=/^data:image\/(png|jpe?g|webp|gif);base64,(.+)$/i.exec(String(x&&x.data||''));if(!m)return;const f=path.join(imgDir,'imagem'+(i+1)+'.'+(m[1].toLowerCase()=='jpeg'?'jpg':m[1].toLowerCase()));fs.writeFileSync(f,Buffer.from(m[2],'base64'));imgP.push(f)})}}catch{}
-    const MAP=pageMap(dir,main),SIG0=timingSig(dir),speedQ=SPEEDQ.test(String(prompt||''));
-    const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+(MAP?`<mapa_da_pagina>\n${MAP}\n</mapa_da_pagina>\n\n`:'')+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
+    const MODE=intentOf(prompt),MAP=pageMap(dir,main),SIG0=timingSig(dir),speedQ=MODE=='edit'&&SPEEDQ.test(String(prompt||''));
+    const effR=MODE=='chat'&&(!EFF[effort]||effort=='low'||effort=='medium')?'high':effort;
+    const msg=(imgP.length?`[O usuário anexou ${imgP.length} imagem(ns) para você olhar com a ferramenta Read: ${imgP.join(' ; ')}. São só referência visual: não copie para a página.]\n\n`:'')+`[Arquivo principal: ${main.replace(/^\//,'')}]\n\n`+(MAP?`<mapa_da_pagina>\n${MAP}\n</mapa_da_pagina>\n\n`:'')+'<modo>'+(MODE=='chat'?'conversa':'alterar')+'</modo>\n\n'+String(prompt||'')+(sel?`\n\n<selecionado>\n${String(sel).slice(0,6000)}\n</selecionado>`:'');
     let sessionId=sid&&/^[0-9a-f-]{36}$/i.test(sid)?sid:uuid(),resume=!!(sid&&/^[0-9a-f-]{36}$/i.test(sid));
     const once=(useResume,m2)=>new Promise(res=>{
-      const args=['-p','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools','Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(imgP.length?['--add-dir',imgDir]:[]).concat(EFF[effort]?['--effort',effort]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
+      const args=['-p','--input-format','stream-json','--output-format','stream-json','--verbose','--include-partial-messages','--permission-mode','acceptEdits','--tools',MODE=='chat'?'Read,Glob,Grep':'Read,Edit,Write,Glob,Grep','--strict-mcp-config','--disable-slash-commands','--max-turns','40','--append-system-prompt-file',sysF].concat(imgP.length?['--add-dir',imgDir]:[]).concat(EFF[effR]?['--effort',effR]:[]).concat(useResume?['--resume',sessionId]:['--session-id',sessionId]);
       let p;try{p=spawn(b.bin,args,{cwd:dir,env:cleanEnv(),windowsHide:true,shell:needShell(b.bin),stdio:['pipe','pipe','pipe']})}catch(er){return res({err:String(er.message||er)})}
       const st={p,canceled:0};RUN.set(id,st);let buf='',err='',final=null,text='',lim=null;const tm=setTimeout(()=>{st.timeout=1;kill(p)},12*60*1000);
       const line=l=>{if(!l.trim())return;let o;try{o=JSON.parse(l)}catch{return}
@@ -150,14 +170,14 @@ module.exports=function setup(ipcMain,H){
       p.stderr.on('data',d=>{err+=d});
       p.on('error',er=>{clearTimeout(tm);RUN.delete(id);res({err:String(er.code=='ENOENT'?'não encontrei o claude':er.message),needInstall:er.code=='ENOENT'})});
       p.on('close',code=>{clearTimeout(tm);if(buf.trim())line(buf);RUN.delete(id);res({code,final,err,text,lim,canceled:st.canceled,timeout:st.timeout})});
-      try{p.stdin.on('error',()=>{});p.stdin.end(m2||msg)}catch{}});
+      try{p.stdin.on('error',()=>{});p.stdin.end(sendIn(m2||msg))}catch{}});
     const rmImg=()=>{try{fs.rmSync(imgDir,{recursive:true,force:true})}catch{}};
-    const baseP=H.probe?H.probe(id).catch(()=>null):Promise.resolve(null);
+    const baseP=H.probe&&MODE!='chat'?H.probe(id).catch(()=>null):Promise.resolve(null);
     let r=await once(resume);
     if(resume&&r&&!r.canceled&&r.final&&r.final.is_error&&/no conversation found|session/i.test(String(r.final.result||r.err||''))&&!(r.text||'').trim()){sessionId=uuid();resume=false;r=await once(false)}
     rmImg();
     /* nada de mexer nos arquivos internos do Shark Lab */
-    const changed=diffSnap(dir,files),out={ok:true,sid:sessionId,changed:changed.slice(0,40),n:changed.length,bk:(changed.length||FLAT)?stamp:null,flat:FLAT,main};
+    const changed=diffSnap(dir,files),out={ok:true,sid:sessionId,changed:changed.slice(0,40),n:changed.length,bk:(changed.length||FLAT)?stamp:null,flat:FLAT,main,mode:MODE};
     let reverted='',fixed=0,speedNo=0;
     if(speedQ&&!r.canceled&&!r.timeout&&r.final&&!r.final.is_error&&timingSig(dir)===SIG0){
       send(wc,{rid,k:'note',t:'Nenhum tempo mudou ainda. Procurando de novo onde a velocidade é controlada…'});
@@ -165,7 +185,7 @@ module.exports=function setup(ipcMain,H){
       if(r3&&r3.final&&!r3.final.is_error)r=r3;
       if(timingSig(dir)===SIG0)speedNo=1}
     {const c0=diffSnap(dir,files);changed.length=0;c0.forEach(x=>changed.push(x))}
-    if(changed.length&&!r.canceled&&!r.timeout&&H.probe){
+    if(MODE!='chat'&&changed.length&&!r.canceled&&!r.timeout&&H.probe){
       send(wc,{rid,k:'note',t:'Conferindo se a página ficou certa…'});
       const base=await baseP;let post=await H.probe(id).catch(()=>null),why=brokenWhy(base,post);
       if(why){await new Promise(x=>setTimeout(x,1500));post=await H.probe(id).catch(()=>null);why=brokenWhy(base,post)}
@@ -186,7 +206,7 @@ module.exports=function setup(ipcMain,H){
     const fin=r.final,errTxt=String((fin&&fin.result)||'')+' '+String(r.err||'');
     if(!fin){out.error=/not logged|\/login|log in/i.test(errTxt)?'':(String(r.err||'').trim().split('\n').slice(-2).join(' ').slice(0,220)||'O Claude não respondeu.');if(/not logged|\/login|log in/i.test(errTxt))out.needLogin=1;return out}
     if(fin.is_error){if(/not logged|\/login|invalid api key|authentication|credentials/i.test(errTxt))out.needLogin=1;else if(r.lim||/limit|usage|quota|overload|rate/i.test(errTxt))out.limit=1;else out.error=String(fin.result||'Erro do Claude').slice(0,220);out.text=(r.text||'').trim();return out}
-    const lr=learn(fin.result||r.text||'');out.text=lr.t;if(lr.L.length){const cur=memLoad(memF),add=lr.L.filter(x=>!cur.some(c=>c.toLowerCase()==x.toLowerCase()));if(add.length){try{fs.writeFileSync(memF,JSON.stringify(cur.concat(add).slice(-40)));out.learned=add}catch{}}}
+    const lr=learn(fin.result||r.text||'');out.text=lr.t;out.mode=MODE;{const fx=[];out.text=out.text.replace(/^[ \t]*AJUSTE:[ \t]*(.+)$/gim,(_,x)=>{const i=x.indexOf('|'),sel=(i<0?x:x.slice(0,i)).trim().replace(/^["'`]|["'`]$/g,''),why=(i<0?'':x.slice(i+1)).trim();if(sel&&fx.length<20)fx.push({sel:sel.slice(0,200),why:why.slice(0,260)});return''}).replace(/\n{3,}/g,'\n\n').trim();if(fx.length)out.fixes=fx}if(lr.L.length){const cur=memLoad(memF),add=lr.L.filter(x=>!cur.some(c=>c.toLowerCase()==x.toLowerCase()));if(add.length){try{fs.writeFileSync(memF,JSON.stringify(cur.concat(add).slice(-40)));out.learned=add}catch{}}}
     return out});
   ipcMain.handle('cc:mem',()=>memLoad(path.join(H.userData(),'cc-memoria.json')));
   ipcMain.handle('cc:memdel',(_,{i})=>{const f=path.join(H.userData(),'cc-memoria.json'),a=memLoad(f);if(Number.isInteger(i)&&i>=0&&i<a.length)a.splice(i,1);try{fs.writeFileSync(f,JSON.stringify(a))}catch{}return a});
@@ -201,4 +221,4 @@ module.exports=function setup(ipcMain,H){
     restoreBk(dir,bkDir);
     if(Array.isArray(meta.ops))fs.writeFileSync(path.join(dir,'_sl_ops.json'),JSON.stringify(meta.ops));fs.rmSync(bkDir,{recursive:true,force:true});return{ok:true,ops:Array.isArray(meta.ops)?meta.ops:null}}catch(e){return{ok:false,error:String(e.message||e)}}});
 };
-module.exports._t={snapshot,diffSnap,walk,cleanJunk,pageMap,timingSig};module.exports.cleanJunk=cleanJunk;
+module.exports._h={findBin,cleanEnv,needShell,sendIn,status};module.exports._t={snapshot,diffSnap,walk,cleanJunk,pageMap,timingSig,intentOf,sendIn};module.exports.cleanJunk=cleanJunk;

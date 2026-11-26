@@ -3,7 +3,11 @@
 const{spawn}=require('child_process');const fs=require('fs'),path=require('path'),os=require('os');
 const ZIPS=()=>process.env.SL_VZ_ZIP_URL?[process.env.SL_VZ_ZIP_URL]:['https://github.com/ggml-org/whisper.cpp/releases/download/b5907/whisper-bin-x64.zip','https://github.com/ggml-org/whisper.cpp/releases/download/b5454/whisper-bin-x64.zip'];
 const MODEL=()=>process.env.SL_VZ_MODEL_URL||'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small-q5_1.bin';
-const PROMPT='Olá! Vamos mudar a página: troque o título, aumente o botão, deixe a cor mais escura. Transcreva com pontuação correta.';
+const PROMPT='Certo. Chat, upsell, downsell, front, hook, copy, criativo, checkout, pixel, Shark Lab, Cakto, Facebook.';
+/* palavras do dia a dia (em ingles/jargao) que a transcricao costuma errar */
+const TERMS=[[/\b(?:ap|up|ab|ape|upe)[\s-]?(?:sel|sell|cel|cell|sau)\b/gi,'upsell'],[/\b(?:down|dau[mn]|dawn|daum)[\s-]?(?:sel|sell|cel|cell)\b/gi,'downsell'],[/\b(?:tchat|tchate|chet|chate|xate|chatt|chet)\b/gi,'chat'],[/\b(?:fronte|fron)\b/gi,'front'],[/\b(?:ruque|rook|hok|rouk|huque)\b/gi,'hook'],[/\bcheck[\s-]?out\b/gi,'checkout'],[/\b(?:chequi?-?aut|cheque-?aute)\b/gi,'checkout'],[/\bshark[\s-]?lab\b/gi,'Shark Lab'],[/\bcakto\b/gi,'Cakto'],[/\bface[\s-]?book\b/gi,'Facebook'],[/\bu[\s.-]?t[\s.-]?m\b/gi,'UTM'],[/\bv[\s.-]?s[\s.-]?l\b/gi,'VSL'],[/\bc[\s.-]?t[\s.-]?a\b/gi,'CTA'],[/\broas\b/gi,'ROAS'],[/\bcop[iy]\b/gi,'copy'],[/\bpixel\b/gi,'pixel']];
+const fixTerms=t=>{for(const[r,x]of TERMS)t=t.replace(r,x);return t};
+const tmpBase=()=>{let d=os.tmpdir();if(/[^\x20-\x7e]/.test(d)&&process.platform=='win32'){const p=path.join(process.env.ProgramData||'C:\\ProgramData','SharkLab-tmp');try{fs.mkdirSync(p,{recursive:true});d=p}catch{}}return d};
 const GHOST=/^\s*[\[(].*[\])]\s*$|legendas? pela comunidade|obrigado por assistir|inscreva-se no canal/i;
 
 module.exports=function setup(ipcMain,H,net){
@@ -45,11 +49,23 @@ module.exports=function setup(ipcMain,H,net){
   ipcMain.handle('vz:run',(_,{wav,prev})=>new Promise(res=>{
     if(!ready())return res({ok:false,error:'O reconhecimento de voz ainda não está instalado.'});if(run)return res({ok:false,error:'Já estou transcrevendo.'});
     let buf;try{buf=Buffer.from(wav)}catch{return res({ok:false,error:'áudio inválido'})}if(buf.length<2000||buf.length>60e6)return res({ok:false,error:'áudio inválido'});
-    const f=path.join(os.tmpdir(),'sl-voz-'+Date.now()+'.wav');try{fs.writeFileSync(f,buf)}catch(x){return res({ok:false,error:String(x.message||x)})}
+    const f=path.join(tmpBase(),'sl-voz-'+Date.now()+'.wav');try{fs.writeFileSync(f,buf)}catch(x){return res({ok:false,error:String(x.message||x)})}
     const bin=exe(),th=Math.max(2,Math.min(8,(os.cpus()||[]).length-1||4));run=1;let out='',er='',done=0;
     const fin=r=>{if(done)return;done=1;run=0;clearTimeout(tm);try{fs.rmSync(f,{force:true})}catch{}res(r)};
-    let p;try{p=spawn(bin,['-m',model(),'-f',f,'-l','pt','-nt','-np','-t',String(th),'--prompt',PROMPT+(typeof prev=='string'&&prev.trim()?' '+prev.trim().slice(-160):'')],{cwd:path.dirname(bin),windowsHide:true})}catch(x){return fin({ok:false,error:String(x.message||x)})}
+    let p;try{p=spawn(bin,['-m',model(),'-f',f,'-l','pt','-nt','-np','-bs','1','-bo','1','-nf','-t',String(th),'--prompt',PROMPT+(typeof prev=='string'&&prev.trim()?' '+prev.trim().slice(-160):'')],{cwd:path.dirname(bin),windowsHide:true})}catch(x){return fin({ok:false,error:String(x.message||x)})}
     const tm=setTimeout(()=>{try{p.kill()}catch{}fin({ok:false,error:'Demorou demais para transcrever.'})},150000);
     p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>er+=d);p.on('error',x=>fin({ok:false,error:String(x.message||x)}));
-    p.on('close',c=>{let t=out.replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();if(GHOST.test(t))t='';if(c!==0&&!t)return fin({ok:false,error:'Não consegui transcrever.'+(er?' '+er.trim().split('\n').slice(-1)[0].slice(0,100):'')});fin({ok:true,text:t})})}));
+    p.on('close',c=>{let t=out.replace(/\r/g,'').split('\n').map(x=>x.trim()).filter(Boolean).join(' ').replace(/\s+/g,' ').trim();if(GHOST.test(t))t='';if(c!==0&&!t)return fin({ok:false,error:'Não consegui transcrever.'+(er?' '+er.trim().split('\n').slice(-1)[0].slice(0,100):'')});fin({ok:true,text:fixTerms(t)})})}));
+  /* uso por outros modulos (edicao de audio/video): roda o whisper com argumentos proprios */
+  return{ready,exe,model,fixTerms,tmp:tmpBase,
+    run(args,o){o=o||{};return new Promise(res=>{if(!ready())return res({ok:false,error:'O reconhecimento de voz ainda não está instalado.'});
+      const th=Math.max(2,Math.min(8,(os.cpus()||[]).length-1||4));let out='',er='',done=0,p;const bin=exe();
+      const fin=r=>{if(done)return;done=1;clearTimeout(tm);res(r)};
+      try{p=spawn(bin,['-m',model()].concat(args,['-l','pt','-bs','1','-bo','1','-nf','-t',String(th)]),{cwd:path.dirname(bin),windowsHide:true})}catch(x){return res({ok:false,error:String(x.message||x)})}
+      const tm=setTimeout(()=>{try{p.kill()}catch{}fin({ok:false,error:'Demorou demais para transcrever.'})},o.timeout||3600000);
+      if(o.reg)o.reg(p);
+      p.stdout.on('data',d=>out+=d);p.stderr.on('data',d=>{er+=d;if(o.onPct){const m=String(d).match(/progress\s*=\s*(\d+)%/g);if(m)o.onPct(+m[m.length-1].replace(/\D/g,''))}});
+      p.on('error',x=>fin({ok:false,error:String(x.message||x)}));p.on('close',c=>fin({ok:c===0,out,err:er,code:c}))})}}
 };
+
+module.exports.fixTerms=fixTerms;
